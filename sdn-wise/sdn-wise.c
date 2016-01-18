@@ -10,8 +10,12 @@
 #include "contiki.h"
 #include "net/rime/rime.h"
 #include "dev/watchdog.h"
-#include "cfs/cfs.h"
-#include "loader/elfloader.h"
+#if CFS_ENABLED
+# include "cfs/cfs.h"
+#endif
+#if ELF_ENABLED
+# include "loader/elfloader.h"
+#endif
 #include "configure.h"
 #include "header.h"
 #include "low_layer.h"
@@ -38,6 +42,7 @@ PROCESS(test_serial, "Test Serial Process");
 PROCESS(prova, "Test Rime Address");
 AUTOSTART_PROCESSES(
 		&init_process,
+		&prova,
 		&low_layer_process,
 		&low_layer_forward_up,
 		&config_incoming_packet,
@@ -49,25 +54,32 @@ AUTOSTART_PROCESSES(
 		&forwarding_incoming_response_packet,
 		&forwarding_to_controller,
 		&forwarding_update_table,
-		&test_serial,
-		&prova);
+		&test_serial
+);
 /*************************************************************************/
 static const struct unicast_callbacks unicast_callbacks = {unicast_recv_packet};
 static struct unicast_conn unicast_connection;
 static const struct broadcast_callbacks broadcast_callbaks = {broadcast_recv_packet};
 static struct broadcast_conn broadcast_connection;
+static uint8_t started = 0;
 /*************************************************************************/
 PROCESS_THREAD(init_process, ev, data) {
 	PROCESS_BEGIN();
-
+#if SINK
+	started = 1;
+#else
+	neighbor2sink.nhop = 255;
+#endif
+	
 	conf_init();			//inizializza cf
 	function_list_root_init();	//inizializza functionListRoot
 	table_init();			//inizializza neighbor table
 	flow_table_init();		//inizializza flow table
 	accepted_table_init();		//inizializza accepted table
 	input_stream_init();		//inizializza inputStream
+#if ELF_ENABLED
 	elfloader_init();
-
+#endif
 	PROCESS_END();
 }
 /*************************************************************************/
@@ -82,9 +94,11 @@ PROCESS_THREAD(low_layer_process, ev, data) {
         PROCESS_WAIT_EVENT();
         if (ev == SEND_PACKET_EVENT) {
         	packet = data;
+		printf("RF sending: ");
+		printArray(packet,packet[1]);
         	addr.u8[0] = packet[HEADER_NEXT_HOP_POS];
         	addr.u8[1] = packet[HEADER_NEXT_HOP_POS +1];
-        	if (packet[HEADER_NEXT_HOP_POS] == 0 && packet[HEADER_NEXT_HOP_POS +1] == 0) {
+        	if (packet[HEADER_NEXT_HOP_POS] == 0 && packet[HEADER_NEXT_HOP_POS +1] == 0) {				
         		continue;
         	}
         	if (packet[HEADER_TTL_POS]>0){
@@ -92,7 +106,7 @@ PROCESS_THREAD(low_layer_process, ev, data) {
         		packetbuf_copyfrom(packet, packet[HEADER_LEN_POS]);
         		if (addressCmp(dst, BROADCAST) != 0){
         		    if(!linkaddr_cmp(&addr, &linkaddr_node_addr)) {
-        		    	unicast_send(&unicast_connection, &addr);
+				unicast_send(&unicast_connection, &addr);		
         		    }
         		} else {
         			broadcast_send(&broadcast_connection);
@@ -150,8 +164,8 @@ PROCESS_THREAD(config_incoming_packet, ev, data){
 				switch (packet[i] & 127){
 				case CNF_ID_ADDR:
 					new_payload[i_new_payload] = packet[i];
-					new_payload[i_new_payload + 1] = (cf.MY_ADDRESS)->addr_h;
-					new_payload[i_new_payload + 2] = (cf.MY_ADDRESS)->addr_l;
+					new_payload[i_new_payload + 1] = cf.MY_ADDRESS.addr_h;
+					new_payload[i_new_payload + 2] = cf.MY_ADDRESS.addr_l;
 					i_new_payload = i_new_payload + 3;
 					i = i + 3;
 					break;
@@ -208,7 +222,7 @@ PROCESS_THREAD(config_incoming_packet, ev, data){
 					send_packet(
 							HEADER_LENGTH + (acceptedTable.len*2),
 							cf.NET_ID,
-							*cf.MY_ADDRESS,
+							cf.MY_ADDRESS,
 							sink_address,
 							CONFIG,
 							cf.TTL_MAX,
@@ -233,7 +247,7 @@ PROCESS_THREAD(config_incoming_packet, ev, data){
 					send_packet(
 							HEADER_LENGTH + (3 + RULE_LEN),
 							cf.NET_ID,
-							*cf.MY_ADDRESS,
+							cf.MY_ADDRESS,
 							sink_address,
 							CONFIG,
 							cf.TTL_MAX,
@@ -246,12 +260,12 @@ PROCESS_THREAD(config_incoming_packet, ev, data){
 				//WRITE
 				switch (packet[i] & 127){
 				case CNF_ID_ADDR:
-					cf.MY_ADDRESS->addr_h = packet[i +1];
-					cf.MY_ADDRESS->addr_l = packet[i +2];
+					cf.MY_ADDRESS.addr_h = packet[i +1];
+					cf.MY_ADDRESS.addr_l = packet[i +2];
 					//////////////////////////////////////// set rime address
 					linkaddr_t linkaddr;
-					linkaddr.u8[0] = cf.MY_ADDRESS->addr_h;
-					linkaddr.u8[1] = cf.MY_ADDRESS->addr_l;
+					linkaddr.u8[0] = cf.MY_ADDRESS.addr_h;
+					linkaddr.u8[1] = cf.MY_ADDRESS.addr_l;
 					linkaddr_set_node_addr(&linkaddr);
 					i = i + 3;
 					break;
@@ -329,6 +343,7 @@ PROCESS_THREAD(config_incoming_packet, ev, data){
 					watchdog_reboot();
 					break;
 				case CNF_ADD_FUNCTION:
+#if ELF_ENABLE
 					id_h = packet[i + 1];
 					id_l = packet[i + 2];
 					uint8_t position;
@@ -424,6 +439,7 @@ PROCESS_THREAD(config_incoming_packet, ev, data){
 					if (functionsRoot.len > 0){
 						process_post(functionsRoot.root->process, FORWARD_UP_PROCESS_EVENT, packet);
 					}
+#endif
 					break;
 				case CNF_REMOVE_FUNCTION:
 					break;
@@ -434,7 +450,7 @@ PROCESS_THREAD(config_incoming_packet, ev, data){
 			send_packet(
 					HEADER_LENGTH + i_new_payload,
 					cf.NET_ID,
-					*cf.MY_ADDRESS,
+					cf.MY_ADDRESS,
 					sink_address,
 					CONFIG,
 					cf.TTL_MAX,
@@ -451,7 +467,8 @@ PROCESS_THREAD(td_incoming_beacon_packet, ev, data){
     while (1) {
         PROCESS_WAIT_EVENT();
         if (ev == INCOMING_BEACON_PACKET_EVENT) {
-        	packet = data;
+	    started = 1;
+            packet = data;
             header header;
             uint8_t headerarray[HEADER_LENGTH];
             split(packet, headerarray, 0, HEADER_LENGTH);
@@ -464,7 +481,7 @@ PROCESS_THREAD(td_incoming_beacon_packet, ev, data){
             new_neighbor.rssi = (uint8_t) (- packetbuf_attr(PACKETBUF_ATTR_RSSI));    //// -80:0 -> 0:80
         /*http://sourceforge.net/p/contiki/mailman/message/31805752/*//////////////////////////////////////
             new_neighbor.batt = payload[BATT_POS];
-            new_neighbor.nhop = payload[NHOP_POS];
+            new_neighbor.nhop = payload[NHOP_POS]+1;
 
             if (new_neighbor.rssi >= cf.RSSI_MIN ) {
 
@@ -481,15 +498,14 @@ PROCESS_THREAD(td_incoming_beacon_packet, ev, data){
             	}
 
             	//aggiorno il neighbor2sink
-            	if (addressCmp(header.next_hop, *cf.MY_ADDRESS)!=0 && addressCmp(header.next_hop, BROADCAST)!=0 ){
+            	if (addressCmp(header.next_hop, cf.MY_ADDRESS) && addressCmp(header.next_hop, BROADCAST)){
             		if (find_best_neighbor(new_neighbor, neighbor2sink) > 0) {
-            			// aggiorna neighbor2sink e flow_table
+            		// aggiorna neighbor2sink e flow_table
             	        neighbor2sink = new_neighbor;
-            	        sink_address = header.next_hop;
-            	        update_rule2sink(header.next_hop, header.src);
+			sink_address = header.next_hop;
+			update_rule2sink(header.next_hop, header.src);
             		}
             	}
-
             }
         }
     }
@@ -502,21 +518,25 @@ PROCESS_THREAD(td_send_beacon_packet, ev, data){
     etimer_set(&et, cf.SEND_BEACON_PACKET_INTERVALL * CLOCK_SECOND);
     while (1) {
         PROCESS_WAIT_EVENT_UNTIL(etimer_expired(&et));
-        if (neighbor2sink.nhop < 255){
-        	uint8_t payload[BEACON_LEN];
-        	payload[NHOP_POS] = neighbor2sink.nhop + 1;
-        	SENSORS_ACTIVATE(battery_sensor);
+	if (started){
+		uint8_t payload[BEACON_LEN];
+        	payload[NHOP_POS] = neighbor2sink.nhop;
+#if BATTERY_ENABLED		        	
+		SENSORS_ACTIVATE(battery_sensor);
         	payload[BATT_POS] = battery_sensor.value(0);	////////////////////////////
         	SENSORS_DEACTIVATE(battery_sensor);
+#else
+		payload[BATT_POS] = 255;
+#endif
         	header h;
         	h.len = HEADER_LENGTH + BEACON_LEN;
         	h.net_id = cf.NET_ID;
-        	h.src = *cf.MY_ADDRESS;
+        	h.src = cf.MY_ADDRESS;
         	h.dst = BROADCAST;
         	h.type = BEACON;
         	h.ttl = cf.TTL_MAX;
         	h.next_hop = sink_address;
-        	send_packet(h.len, h.net_id, h.src, h.dst, h.type, h.ttl, h.next_hop, payload);
+		send_packet(h.len, h.net_id, h.src, h.dst, h.type, h.ttl, h.next_hop, payload);
         }
         etimer_set(&et, cf.SEND_BEACON_PACKET_INTERVALL * CLOCK_SECOND);
     }
@@ -529,12 +549,19 @@ PROCESS_THREAD(td_send_report_packet, ev, data){
     etimer_set(&et, cf.SEND_REPORT_PACKET_INTERVALL * CLOCK_SECOND);
     while (1) {
         PROCESS_WAIT_EVENT_UNTIL(etimer_expired(&et));
+	printf("Report?");
         if (neighbor_table.table_len > 0) {
+	printf("Report!");
         	uint8_t payload[3 + (neighbor_table.table_len * 3)];
         	payload[0] = neighbor2sink.nhop;
-        	SENSORS_ACTIVATE(battery_sensor);
+
+#if BATTERY_ENABLED		        	
+		SENSORS_ACTIVATE(battery_sensor);
         	payload[1] = battery_sensor.value(0);	////////////////////////////
         	SENSORS_DEACTIVATE(battery_sensor);
+#else
+		payload[1] = 255;
+#endif
         	payload[2] = neighbor_table.table_len;
 
         	int k=3;
@@ -552,30 +579,30 @@ PROCESS_THREAD(td_send_report_packet, ev, data){
         	header h;
         	h.len = HEADER_LENGTH + 3 + (neighbor_table.table_len * 3);
         	h.net_id = cf.NET_ID;
-        	h.src = *cf.MY_ADDRESS;
+        	h.src = cf.MY_ADDRESS;
         	h.dst = sink_address;
         	h.type = REPORT;
         	h.ttl = cf.TTL_MAX;
         	h.next_hop = neighbor2sink.address;
-        	send_packet(h.len, h.net_id, h.src, h.dst, h.type, h.ttl, h.next_hop, payload);
-        	neighbor_table_remove_all(&neighbor_table);
+        	
         	//neighbor2sink_reset(); TODO controllare cosa succede se si rimuove un nx hop vs sink
         	/////////////////////////////////////////// if == SINK
-        	if (cf.MY_ADDRESS->addr_h == 1 && cf.MY_ADDRESS->addr_l == 0){
-        		neighbor2sink.nhop = 0;
-        		sink_address = *cf.MY_ADDRESS;	//sink_address = *SRC;
+#if SINK
+			neighbor2sink.nhop = 0;
+        		sink_address = cf.MY_ADDRESS;	//sink_address = *SRC;
         	    //
         	    static uint8_t packet[PACKET_LEN];
         	    header2array(h, packet);
-        	    int i;
         	    for (i=0; i<h.len; i++){
         	    	packet[i + HEADER_LENGTH] = payload[i];
         	    }
-        	    forwarding2controller(packet);
+		    forwarding2controller(packet);
         	    //
-        	}
-        	//////////////////////////////////////////
-        }
+#else
+		    send_packet(h.len, h.net_id, h.src, h.dst, h.type, h.ttl, h.next_hop, payload);
+#endif		
+		neighbor_table_remove_all(&neighbor_table);
+	}
         etimer_set(&et, cf.SEND_REPORT_PACKET_INTERVALL * CLOCK_SECOND);
     }
     PROCESS_END();
@@ -639,7 +666,7 @@ PROCESS_THREAD(forwarding_data_packet, ev, data){
 			header2array(h, packet);
 
 				/////////////////////////////////////////// if == SINK
-			if (cf.MY_ADDRESS->addr_h == 1 && cf.MY_ADDRESS->addr_l == 0){
+			if (cf.MY_ADDRESS.addr_h == 1 && cf.MY_ADDRESS.addr_l == 0){
 				forwarding2controller(packet);
 				///////////////////////////////////////////
 			} else {
@@ -738,17 +765,17 @@ PROCESS_THREAD(test_serial, ev, data){
 /*************************************************************************/
 PROCESS_THREAD(prova, ev, data) {
     PROCESS_BEGIN();
-    if (cf.MY_ADDRESS->addr_h == 1 && cf.MY_ADDRESS->addr_l == 0){
+    if (cf.MY_ADDRESS.addr_h == 1 && cf.MY_ADDRESS.addr_l == 0){
     	neighbor2sink.nhop = 0;
-    	cf.MY_ADDRESS->addr_h = 1;	//
-    	cf.MY_ADDRESS->addr_l = 0;	//
+    	cf.MY_ADDRESS.addr_h = 1;	//
+    	cf.MY_ADDRESS.addr_l = 0;	//
     	//////////////////////////////////////// set rime address
     	linkaddr_t linkaddr;
-    	linkaddr.u8[0] = cf.MY_ADDRESS->addr_h;
-    	linkaddr.u8[1] = cf.MY_ADDRESS->addr_l;
+    	linkaddr.u8[0] = cf.MY_ADDRESS.addr_h;
+    	linkaddr.u8[1] = cf.MY_ADDRESS.addr_l;
     	linkaddr_set_node_addr(&linkaddr);
-    	sink_address = *cf.MY_ADDRESS;
-    	neighbor2sink.address = *cf.MY_ADDRESS;
+    	sink_address = cf.MY_ADDRESS;
+    	neighbor2sink.address = cf.MY_ADDRESS;
     } else {
     	//neighbor2sink.nhop = rand() % 256;
     }
@@ -801,7 +828,7 @@ PROCESS_THREAD(low_layer_analyzer, ev, data){
 			header h;
 			h.len = HEADER_LENGTH + len +3;
 			h.net_id = cf.NET_ID;
-			h.src = *(cf.MY_ADDRESS);
+			h.src = cf.MY_ADDRESS;
 			//h.dst.addr_h = 0;
 			//h.dst.addr_l = 0;
 			h.dst = sink_address;
@@ -818,7 +845,7 @@ PROCESS_THREAD(low_layer_analyzer, ev, data){
 			for (i=HEADER_LENGTH +3; i < h.len; i++){
 				new_packet[i] = l2p[i - HEADER_LENGTH -3];
 			}
-			if ((cf.MY_ADDRESS->addr_h == 1) && (cf.MY_ADDRESS->addr_l == 0)){	//////////////IF SINK
+			if ((cf.MY_ADDRESS.addr_h == 1) && (cf.MY_ADDRESS.addr_l == 0)){	//////////////IF SINK
 				forwarding2controller(new_packet);
 			} else {															/////////////////////
 				send_packet2(new_packet);

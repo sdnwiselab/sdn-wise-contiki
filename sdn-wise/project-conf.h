@@ -9,6 +9,9 @@
 #define _SDN_WISE_PROJECT_CONF_H_
 /*************************************************************************/
 #define SDN_WISE
+#define CFS_ENABLED 	0
+#define ELF_ENABLED 	0
+#define BATTERY_ENABLED 0
 /*************************************************************************/
 #endif // _SDN_WISE_PROJECT_CONF_H_
 

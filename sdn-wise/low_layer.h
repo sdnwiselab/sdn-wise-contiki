@@ -110,8 +110,8 @@ void accepted_table_remove(accepted_table *t, address address){
 		t->root = NULL;
 		free(e);
 		*/
-		cf.MY_ADDRESS->addr_h = linkaddr_node_addr.u8[0];
-		cf.MY_ADDRESS->addr_l = linkaddr_node_addr.u8[1];
+		cf.MY_ADDRESS.addr_h = linkaddr_node_addr.u8[0];
+		cf.MY_ADDRESS.addr_l = linkaddr_node_addr.u8[1];
 		return;
 	} else {
 		accepted_element *e_before;
@@ -134,11 +134,14 @@ void accepted_table_remove(accepted_table *t, address address){
 /*************************************************************************/
 void accepted_table_init(){
 	if (accepted_table_init_var == 0){
+		/*		
 		address myself;
 		myself.addr_h = linkaddr_node_addr.u8[0];
 		myself.addr_l = linkaddr_node_addr.u8[1];
-		accepted_table_add(&acceptedTable, myself);
-		cf.MY_ADDRESS = &((*(acceptedTable.root)).address);
+		
+		cf.MY_ADDRESS = ((*(acceptedTable.root)).address);
+		*/
+		accepted_table_add(&acceptedTable, cf.MY_ADDRESS);		
 		accepted_table_add(&acceptedTable, BROADCAST);
 		accepted_table_init_var = 1;
 	}
@@ -163,19 +166,16 @@ static void recv_packet(struct unicast_conn *c, const linkaddr_t *from, uint8_t 
         payload[i] = packet[i+HEADER_LENGTH];
     }
 
-#if !SINK
-    printf("LOW_LAYER: print new packet\n");
-    printHeader(h);
-    printArray(payload, h.len - HEADER_LENGTH);
-#endif
+    printf("RF: received ");
+    printArray(packet,packet[1]);
 
     switch (h.type){
     case DATA:
     	if (accepted_table_search(acceptedTable, h.next_hop)) {
-    		if (accepted_table_search(acceptedTable, h.dst)) {
 #if !SINK
-    			printf("LOW_LAYER - DATA : dst = myself - forward up\n");
+    			printf("LOW_LAYER: DATA packet received \n");
 #endif
+    		if (accepted_table_search(acceptedTable, h.dst)) {
     			if (functionsRoot.len > 0) {
     				struct process * p;
     				p = functionsRoot.root->process;
@@ -184,38 +184,23 @@ static void recv_packet(struct unicast_conn *c, const linkaddr_t *from, uint8_t 
     				process_post(&low_layer_forward_up, FORWARD_UP_EVENT, packet);
     			}
     		} else {
-#if !SINK
-    			printf("LOW_LAYER: DATA packet received \n");
-#endif
     			process_post(&forwarding_data_packet, FORWARDING_DATA_PACKET_EVENT, packet);
     		}
-    	} else {
-#if !SINK
-    		printf("LOW_LAYER - DATA - error: next_hop = other\n");
-#endif
-    	}
+    	} 
     	break;
     case BEACON:
-#if !SINK
     		printf("LOW_LAYER: BEACON packet received\n");
-#endif
     		process_post(&td_incoming_beacon_packet, INCOMING_BEACON_PACKET_EVENT, packet);
     	break;
     case REPORT:
     	if (accepted_table_search(acceptedTable, h.next_hop)) {
+    		printf("LOW_LAYER: REPORT packet received\n");
     		if (accepted_table_search(acceptedTable, h.dst)) {
-    			process_post(&forwarding_to_controller, FORWARDING_TO_CONTROLLER_EVENT, packet);
+			process_post(&forwarding_to_controller, FORWARDING_TO_CONTROLLER_EVENT, packet);
     		} else {
-#if !SINK
-    			printf("LOW_LAYER: REPORT packet received\n");
-#endif
-    			process_post(&forwarding_packet_to_sink, FORWARDING_PACKET_TO_SINK_EVENT, packet);
+			process_post(&forwarding_packet_to_sink, FORWARDING_PACKET_TO_SINK_EVENT, packet);
     		}
-    	} else {
-#if !SINK
-    		printf("LOW_LAYER - REPORT - error: next_hop = other\n");
-#endif
-    	}
+    	} 
     	break;
     case RESPONSE:
     	if (accepted_table_search(acceptedTable, h.next_hop)) {
@@ -225,16 +210,9 @@ static void recv_packet(struct unicast_conn *c, const linkaddr_t *from, uint8_t 
 #endif
     			process_post(&forwarding_incoming_response_packet, FORWARDING_PACKET_TO_SINK_EVENT, packet);
     		} else {
-#if !SINK
-    			printf("LOW_LAYER: RESPONSE packet forwarding\n");
-#endif
     			process_post(&forwarding_data_packet, FORWARDING_DATA_PACKET_EVENT, packet);
     		}
-    	} else {
-#if !SINK
-    		printf("LOW_LAYER - RESPONSE - error: next_hop = other\n");
-#endif
-    	}
+    	} 
     	break;
     case OPEN_PATH:
     	if (accepted_table_search(acceptedTable, h.next_hop)
@@ -260,7 +238,7 @@ static void recv_packet(struct unicast_conn *c, const linkaddr_t *from, uint8_t 
     		for (i=0; i<n_addresses; i++){
     			split(payload, addr_array_tmp, (n_windows * (RULE_LEN-1)) + 1 + i*ADDRESS_LENGHT, ADDRESS_LENGHT);
     			array2address(addr_array_tmp, &(addr_list[i]));
-    			if (addressCmp(*(cf.MY_ADDRESS), addr_list[i]) ==0) index = i;	//if (addressCmp(*SRC, addr_list[i]) ==0) index = i;
+    			if (addressCmp(cf.MY_ADDRESS, addr_list[i]) ==0) index = i;	//if (addressCmp(*SRC, addr_list[i]) ==0) index = i;
     		}
 
     		rule rule;
@@ -301,10 +279,6 @@ static void recv_packet(struct unicast_conn *c, const linkaddr_t *from, uint8_t 
     			header2array(h, packet);
     			send_packet2(packet);
     		}
-    	} else {
-#if !SINK
-    		printf("LOW_LAYER - RESPONSE - error: next_hop = other\n");
-#endif
     	}
     	break;
     case CONFIG:
@@ -353,16 +327,10 @@ static void recv_packet(struct unicast_conn *c, const linkaddr_t *from, uint8_t 
 }
 /*************************************************************************/
 static void unicast_recv_packet(struct unicast_conn *c, const linkaddr_t *from, uint8_t data[]){
-#if !SINK
-	printf("LOW_LAYER : unicast message received from %d.%d\n", from->u8[0], from->u8[1]);
-#endif
 	recv_packet(c, from, data);
 }
 /*************************************************************************/
 static void broadcast_recv_packet(struct unicast_conn *c, const linkaddr_t *from, uint8_t data[]){
-#if !SINK
-	printf("LOW_LAYER : broadcast message received from %d.%d\n", from->u8[0], from->u8[1]);
-#endif
 	recv_packet(c, from, data);
 }
 /*************************************************************************/

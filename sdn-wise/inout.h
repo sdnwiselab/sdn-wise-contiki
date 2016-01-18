@@ -76,7 +76,7 @@ void input_stream_init(){
 		inputStream.last = NULL;
 		input_stream_init_var = 1;
 
-		uart1_init(BAUD2UBR(115200)); //set the baud rate as necessary
+		//uart1_init(BAUD2UBR(115200)); //set the baud rate as necessary
 		uart1_set_input(uart_rx_callback); //set the callback function
 	}
 }

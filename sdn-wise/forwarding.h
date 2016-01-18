@@ -192,7 +192,7 @@ boolean runAction(uint8_t *packet, ruleAction action){ //return = FALSE (NO_MULT
 	case SDN_WISE_FORWARD_UNICAST:
 		data[HEADER_NEXT_HOP_POS] = action.value_h;
 		data[HEADER_NEXT_HOP_POS +1] = action.value_l;
-		data[HEADER_TTL_POS] = data[HEADER_TTL_POS] --;
+		data[HEADER_TTL_POS] = data[HEADER_TTL_POS] - 1;
 		send_packet2(data);
 		break;
 	case SDN_WISE_FORWARD_BROADCAST:
@@ -200,7 +200,7 @@ boolean runAction(uint8_t *packet, ruleAction action){ //return = FALSE (NO_MULT
 		data[HEADER_NEXT_HOP_POS +1] = BROADCAST.addr_l;
 		data[HEADER_DST_POS] = BROADCAST.addr_h;	//////////////////////////
 		data[HEADER_DST_POS +1] = BROADCAST.addr_l;	//////////////////////////
-		data[HEADER_TTL_POS] = data[HEADER_TTL_POS] --;
+		data[HEADER_TTL_POS] = data[HEADER_TTL_POS] - 1;
 		send_packet2(data);
 		break;
 	case SDN_WISE_DROP:

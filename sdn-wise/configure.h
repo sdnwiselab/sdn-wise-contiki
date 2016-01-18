@@ -9,8 +9,11 @@
 #define _SDN_WISE_CONFIGURE_H_
 /*************************************************************************/
 #include "header.h"
+#include "topology_discovery.h"
 #include <string.h>
+#if CFS_ENABLED
 #include "cfs/cfs.h"
+#endif
 /*************************************************************************/
 #define CONFIG_PACKET_EVENT				52
 #define DFLT_NET_ID					1;
@@ -43,7 +46,7 @@
 PROCESS_NAME(config_incoming_packet);
 /*************************************************************************/
 typedef struct conf {
-	address * MY_ADDRESS;
+	address MY_ADDRESS;
 	uint8_t NET_ID;
 	uint8_t SEND_BEACON_PACKET_INTERVALL;
 	uint8_t SEND_REPORT_PACKET_INTERVALL;
@@ -81,7 +84,16 @@ static function_list_root functionListRoot;
 /*************************************************************************/
 void conf_init(){
 	if (conf_init_var == 0){
-		cf.MY_ADDRESS = NULL;
+#if SINK
+	cf.MY_ADDRESS.addr_h = 0;	
+    	cf.MY_ADDRESS.addr_l = 1;
+
+	sink_address.addr_h = cf.MY_ADDRESS.addr_h;	
+	sink_address.addr_l = cf.MY_ADDRESS.addr_l;
+#else
+	cf.MY_ADDRESS.addr_h = 0;	
+    	cf.MY_ADDRESS.addr_l = 2;
+#endif	
 		cf.NET_ID = DFLT_NET_ID;
 		cf.SEND_BEACON_PACKET_INTERVALL = DFLT_SEND_BEACON_PACKET_INTERVALL;
 		cf.SEND_REPORT_PACKET_INTERVALL = DFLT_SEND_REPORT_PACKET_INTERVALL;
@@ -125,6 +137,7 @@ function_element ** function_root_search_by_position(function_root *fr, uint8_t 
 }
 /*************************************************************************/
 void function_root_add_element(function_root *fr, uint8_t position, uint8_t *array, uint8_t len_array){
+#if CFS_ENABLED
 	function_element **fe_before;
 	fe_before = function_root_search_by_position(fr, position);
 	if (*fe_before != NULL && (*fe_before)->next != NULL && (*fe_before)->next->position == position) return;
@@ -151,9 +164,11 @@ void function_root_add_element(function_root *fr, uint8_t position, uint8_t *arr
 	(*fe_before) = fe;
 	fr->elements_number = fr->elements_number + 1;
 	fr->total_bytes = fr->total_bytes + (int) fe->len_array;
+#endif
 }
 /*************************************************************************/
 void function_root_remove_all (function_root *fr){
+#if CFS_ENABLED
 	function_element *fep;
 	fep = fr->root;
 	char file[20];
@@ -166,9 +181,11 @@ void function_root_remove_all (function_root *fr){
 		fep = fr->root;
 	}
 	free(fr);
+#endif
 }
 /*************************************************************************/
 void function_root_compose_packet(function_root *fr){
+#if CFS_ENABLED
 	int fd_file;
 	char file[16];
 	sprintf(file, "f_%d_%d.ce", fr->id_h, fr->id_l);
@@ -201,6 +218,7 @@ void function_root_compose_packet(function_root *fr){
 		fep = fep->next;
 	}
 	cfs_close(fd_file);
+#endif
 }
 /*************************************************************************/
 void function_list_root_init(){

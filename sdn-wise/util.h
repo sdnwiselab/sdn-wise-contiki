@@ -18,7 +18,7 @@ typedef enum boolean {
 void printArray(uint8_t array[], uint8_t dim){
 	int i;
     for (i=0; i<dim; i++) {
-        printf("%d\t ", array[i]);
+        printf("%d ", array[i]);
     }
     printf("\n");
 }
