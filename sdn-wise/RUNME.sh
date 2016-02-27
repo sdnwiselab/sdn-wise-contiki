@@ -1,9 +1,10 @@
 #!/bin/bash
 TARGET="sky"
 
-make TARGET=$TARGET clean
-make TARGET=$TARGET DEFINES=SINK=1
-mv sdn-wise.$TARGET sink.$TARGET 
-make TARGET=$TARGET DEFINES=SINK=0
-mv sdn-wise.$TARGET node.$TARGET
+mkdir cooja_firmwares
 
+make TARGET=$TARGET DEFINES=COOJA=1,SINK=1 
+mv sdn-wise.$TARGET cooja_firmwares/sink.$TARGET 
+make TARGET=$TARGET DEFINES=COOJA=1,SINK=0
+mv sdn-wise.$TARGET cooja_firmwares/node.$TARGET 
+make TARGET=$TARGET clean

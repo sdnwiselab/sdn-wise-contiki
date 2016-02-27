@@ -1,18 +1,19 @@
 /*
  *  project-conf.h
  *
- *  Created on: 09 nov 2015
- *      Author: Mario Brischetto
+ *  Created on: 27 jan 2016
+ *      Author: Sebastiano Milardo
  */
 
-#ifndef _SDN_WISE_PROJECT_CONF_H_
-#define _SDN_WISE_PROJECT_CONF_H_
+#ifndef PROJECT_CONF_H_
+#define PROJECT_CONF_H_
+
 /*************************************************************************/
-#define SDN_WISE
-#define CFS_ENABLED 	0
-#define ELF_ENABLED 	0
+#define CFS_ENABLED   0
+#define ELF_ENABLED   0
 #define BATTERY_ENABLED 0
+#define DEBUG_SINK    0
 /*************************************************************************/
-#endif // _SDN_WISE_PROJECT_CONF_H_
+#endif // PROJECT_CONF_H_
 
 

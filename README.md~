@@ -1,0 +1,8 @@
+# sdn-wise-node
+[![Build Status](https://travis-ci.org/sdnwiselab/sdn-wise-node.svg?branch=master)](https://travis-ci.org/sdnwiselab/sdn-wise-node)
+
+An emulated SDN-WISE Java Node.
+
+### Versioning
+
+This project uses [semantic versioning](http://semver.org).

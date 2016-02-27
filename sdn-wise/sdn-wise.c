@@ -1,860 +1,340 @@
 /*
- *  sdn-wise.c
+ * Copyright (C) 2015 SDN-WISE
  *
- *  Created on: 21 nov 2015
- *      Author: Mario Brischetto
+ * This program is free software: you can redistribute it and/or modify
+ * it under the terms of the GNU General Public License as published by
+ * the Free Software Foundation, either version 3 of the License, or
+ * (at your option) any later version.
+ *
+ * This program is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ * GNU General Public License for more details.
+ *
+ * You should have received a copy of the GNU General Public License
+ * along with this program.  If not, see <http://www.gnu.org/licenses/>.
  */
 
-/*************************************************************************/
-#include <stdio.h>
+/**
+ * \file
+ *         SDN-WISE for Contiki.
+ * \author
+ *         Sebastiano Milardo <s.milardo@hotmail.it>
+ */
+
+/**
+ * \addtogroup sdn-wise
+ * @{
+ */
+
 #include "contiki.h"
 #include "net/rime/rime.h"
+#include "net/linkaddr.h"  
 #include "dev/watchdog.h"
+#include "dev/uart1.h"
+#include "lib/list.h"
 #if CFS_ENABLED
-# include "cfs/cfs.h"
+#include "cfs/cfs.h"
 #endif
 #if ELF_ENABLED
-# include "loader/elfloader.h"
+#include "loader/elfloader.h"
 #endif
-#include "configure.h"
-#include "header.h"
-#include "low_layer.h"
-#include "topology_discovery.h"
-#include "forwarding.h"
-#include "inout.h"
-#include "functions.h"
-#include "sniffer.h"
-/*************************************************************************/
-PROCESS(init_process, "Init Process");
-PROCESS(low_layer_process, "Low Layer - Process");
-PROCESS(low_layer_forward_up, "Low Layer - Forward Up");
-PROCESS(low_layer_analyzer, "low Layer - Analyzer");
-PROCESS(config_incoming_packet, "Config - Incoming Packet");
-PROCESS(td_incoming_beacon_packet, "TD - Incoming Beacon Packet");
-PROCESS(td_send_beacon_packet, "TD - Send Beacon Packet");
-PROCESS(td_send_report_packet, "TD - Send Report Packet");
-PROCESS(forwarding_packet_to_sink, "Forwarding Packet to Sink");
-PROCESS(forwarding_data_packet, "Forwarding Data Packet");
-PROCESS(forwarding_incoming_response_packet, "Forwarding Incoming Reponse Packet");
-PROCESS(forwarding_to_controller, "Forwarding to Controller");
-PROCESS(forwarding_update_table, "Forwarding Update Table");
-PROCESS(test_serial, "Test Serial Process");
-PROCESS(prova, "Test Rime Address");
-AUTOSTART_PROCESSES(
-		&init_process,
-		&prova,
-		&low_layer_process,
-		&low_layer_forward_up,
-		&config_incoming_packet,
-		&td_incoming_beacon_packet,
-		&td_send_beacon_packet,
-		&td_send_report_packet,
-		&forwarding_packet_to_sink,
-		&forwarding_data_packet,
-		&forwarding_incoming_response_packet,
-		&forwarding_to_controller,
-		&forwarding_update_table,
-		&test_serial
-);
-/*************************************************************************/
-static const struct unicast_callbacks unicast_callbacks = {unicast_recv_packet};
-static struct unicast_conn unicast_connection;
-static const struct broadcast_callbacks broadcast_callbaks = {broadcast_recv_packet};
-static struct broadcast_conn broadcast_connection;
-static uint8_t started = 0;
-/*************************************************************************/
-PROCESS_THREAD(init_process, ev, data) {
-	PROCESS_BEGIN();
+#include "sdn-wise.h"
+#include "flowtable.h"
+#include "packet-buffer.h"
+#include "packet-handler.h"
+#include "packet-creator.h"
+#include "neighbor-table.h"
+#include "node-conf.h"
+
+#define UART_BUFFER_SIZE      MAX_PACKET_LENGTH
+
+#define UNICAST_CONNECTION_NUMBER     29
+#define BROADCAST_CONNECTION_NUMBER       30
+
+#define TIMER_EVENT       50
+#define RF_U_SEND_EVENT     51
+#define RF_B_SEND_EVENT     52
+#define RF_U_RECEIVE_EVENT    53
+#define RF_B_RECEIVE_EVENT    54
+#define UART_RECEIVE_EVENT      55
+#define RF_SEND_BEACON_EVENT  56
+#define RF_SEND_REPORT_EVENT  57
+#define NEW_PACKET_EVENT  58
+#define ACTIVATE_EVENT    59
+
+#define DEBUG 1
+#if DEBUG && (!SINK || DEBUG_SINK)
+#include <stdio.h>
+#define PRINTF(...) printf(__VA_ARGS__)
+#else
+#define PRINTF(...)
+#endif
+/*----------------------------------------------------------------------------*/
+  PROCESS(main_proc, "Main Process");
+  PROCESS(rf_u_send_proc, "RF Unicast Send Process");
+  PROCESS(rf_b_send_proc, "RF Broadcast Send Process");
+  PROCESS(packet_handler_proc, "Packet Handler Process");
+  PROCESS(timer_proc, "Timer Process");
+  PROCESS(beacon_timer_proc, "Beacon Timer Process");
+  PROCESS(report_timer_proc, "Report Timer Process");
+  AUTOSTART_PROCESSES(
+    &main_proc,
+    &rf_u_send_proc,
+    &rf_b_send_proc,
+    &timer_proc,
+    &beacon_timer_proc,
+    &report_timer_proc,
+    &packet_handler_proc
+    );
+/*----------------------------------------------------------------------------*/
+  static uint8_t uart_buffer[UART_BUFFER_SIZE];
+  static uint8_t uart_buffer_index = 0;
+  static uint8_t uart_buffer_expected = 0; 
+/*----------------------------------------------------------------------------*/
+  void
+  rf_unicast_send(packet_t* p)
+  {
+    process_post(&rf_u_send_proc, RF_U_SEND_EVENT, (process_data_t)p);
+  }
+/*----------------------------------------------------------------------------*/
+  void
+  rf_broadcast_send(packet_t* p)
+  {
+    process_post(&rf_b_send_proc, RF_B_SEND_EVENT, (process_data_t)p);
+  }
+/*----------------------------------------------------------------------------*/
+  static void
+  unicast_rx_callback(struct unicast_conn *c, const linkaddr_t *from)
+  {
+    packet_t* p = get_packet_from_array((uint8_t *)packetbuf_dataptr());
+    if (p != NULL){
+      // TODO the exact rssi value depends on the radio (search for a formula)
+      p->info.rssi = (uint8_t) (- packetbuf_attr(PACKETBUF_ATTR_RSSI));
+      process_post(&main_proc, RF_U_RECEIVE_EVENT, (process_data_t)p);
+    }
+  }
+/*----------------------------------------------------------------------------*/
+  static void
+  broadcast_rx_callback(struct broadcast_conn *c, const linkaddr_t *from)
+  {
+    packet_t* p = get_packet_from_array((uint8_t *)packetbuf_dataptr());
+    if (p != NULL){
+      // TODO the exact rssi value depends on the radio (search for a formula)
+      // http://sourceforge.net/p/contiki/mailman/message/31805752/
+      p->info.rssi = (uint8_t) (- packetbuf_attr(PACKETBUF_ATTR_RSSI));
+      process_post(&main_proc, RF_B_RECEIVE_EVENT, (process_data_t)p);
+    }
+  }
+/*----------------------------------------------------------------------------*/
+  static int
+  uart_rx_callback(unsigned char c)
+  {
+    // TODO works with cooja, will not work with real nodes, cause -> syn
+    uart_buffer[uart_buffer_index] = c;
+    if (uart_buffer_index == LEN_INDEX){
+      uart_buffer_expected = c;
+    }
+    uart_buffer_index++;
+    if (uart_buffer_index == uart_buffer_expected){
+      uart_buffer_index = 0;
+      uart_buffer_expected = 0;
+      packet_t* p = get_packet_from_array(uart_buffer);
+      if (p != NULL){
+        p->info.rssi = 255;
+        process_post(&main_proc, UART_RECEIVE_EVENT, (process_data_t)p);  
+      }
+    }
+    return 0;
+  }
+/*----------------------------------------------------------------------------*/
+  static const struct unicast_callbacks unicast_callbacks = { 
+    unicast_rx_callback 
+  };
+  static struct unicast_conn uc;
+  static const struct broadcast_callbacks broadcast_callbacks = { 
+    broadcast_rx_callback 
+  };
+  static struct broadcast_conn bc;
+/*----------------------------------------------------------------------------*/
+  PROCESS_THREAD(main_proc, ev, data) {
+    PROCESS_BEGIN();
+    
+    uart1_init(BAUD2UBR(115200));       /* set the baud rate as necessary */
+    uart1_set_input(uart_rx_callback);  /* set the callback function */
+
+    node_conf_init();
+    flowtable_init();
+    packet_buffer_init();
+    neighbor_table_init();
+    address_list_init();
+    
+    while(1) {
+      PROCESS_WAIT_EVENT();
+      switch(ev) {
+        case TIMER_EVENT:
+      // test_handle_open_path();
+      // test_flowtable();
+      // test_neighbor_table();
+      // test_packet_buffer();
+      // test_address_list();
+      // print_node_conf();
+        break;
+
+        case UART_RECEIVE_EVENT:
+        process_post(&packet_handler_proc, NEW_PACKET_EVENT, (process_data_t)data);
+        break;
+
+        case RF_B_RECEIVE_EVENT:
+        if (!conf.is_active){
+          conf.is_active = 1;
+          process_post(&beacon_timer_proc, ACTIVATE_EVENT, (process_data_t)NULL);
+          process_post(&report_timer_proc, ACTIVATE_EVENT, (process_data_t)NULL);
+        }
+        case RF_U_RECEIVE_EVENT:
+        process_post(&packet_handler_proc, NEW_PACKET_EVENT, (process_data_t)data);
+        break;
+
+        case RF_SEND_BEACON_EVENT:
+        rf_broadcast_send(create_beacon());
+        break;
+
+        case RF_SEND_REPORT_EVENT:
+        rf_unicast_send(create_report());
+        break;
+      } 
+    }
+    PROCESS_END();
+  }
+/*----------------------------------------------------------------------------*/
+  PROCESS_THREAD(rf_u_send_proc, ev, data) {
+    static linkaddr_t addr;
+    PROCESS_EXITHANDLER(unicast_close(&uc);)
+    PROCESS_BEGIN();
+    unicast_open(&uc, UNICAST_CONNECTION_NUMBER, &unicast_callbacks);
+    while(1) {
+      PROCESS_WAIT_EVENT_UNTIL(ev == RF_U_SEND_EVENT);
+      packet_t* p = (packet_t*)data;
+
+      if (p != NULL){
+
+        PRINTF("[TXU]: ");
+        print_packet(p);
+        PRINTF("\n");
+
+        if (!is_my_address(&(p->header.dst))){
+          int i = 0;
+
+          int sent_size = 0;
+
+          if (LINKADDR_SIZE < ADDRESS_LENGTH){
+            sent_size = LINKADDR_SIZE;
+          } else {
+            sent_size = ADDRESS_LENGTH;
+          }
+
+          for ( i=0; i<sent_size; ++i){
+            addr.u8[i] = p->header.nxh.u8[(sent_size-1)-i];
+          }
+
+          addr.u8[0] = p->header.nxh.u8[1];
+          addr.u8[1] = p->header.nxh.u8[0];
+          uint8_t* a = (uint8_t*)p;
+          packetbuf_copyfrom(a,p->header.len);
+          unicast_send(&uc, &addr);
+        } 
 #if SINK
-	started = 1;
-#else
-	neighbor2sink.nhop = 255;
-#endif
-	
-	conf_init();			//inizializza cf
-	function_list_root_init();	//inizializza functionListRoot
-	table_init();			//inizializza neighbor table
-	flow_table_init();		//inizializza flow table
-	accepted_table_init();		//inizializza accepted table
-	input_stream_init();		//inizializza inputStream
-#if ELF_ENABLED
-	elfloader_init();
-#endif
-	PROCESS_END();
-}
-/*************************************************************************/
-PROCESS_THREAD(low_layer_process, ev, data) {
-	PROCESS_EXITHANDLER(unicast_close(&unicast_connection);)
-    PROCESS_BEGIN();
-    unicast_open(&unicast_connection, LOW_LAYER_UNICAST_CONNECTION_NUMBER, &unicast_callbacks);
-    broadcast_open(&broadcast_connection, LOW_LAYER_BROADCAST_CONNECTION_NUMBER, &broadcast_callbaks);
-    static uint8_t *packet;
-    while (1) {
-        static linkaddr_t addr;
-        PROCESS_WAIT_EVENT();
-        if (ev == SEND_PACKET_EVENT) {
-        	packet = data;
-		printf("RF sending: ");
-		printArray(packet,packet[1]);
-        	addr.u8[0] = packet[HEADER_NEXT_HOP_POS];
-        	addr.u8[1] = packet[HEADER_NEXT_HOP_POS +1];
-        	if (packet[HEADER_NEXT_HOP_POS] == 0 && packet[HEADER_NEXT_HOP_POS +1] == 0) {				
-        		continue;
-        	}
-        	if (packet[HEADER_TTL_POS]>0){
-        		address dst = {packet[HEADER_DST_POS], packet[HEADER_DST_POS +1]};
-        		packetbuf_copyfrom(packet, packet[HEADER_LEN_POS]);
-        		if (addressCmp(dst, BROADCAST) != 0){
-        		    if(!linkaddr_cmp(&addr, &linkaddr_node_addr)) {
-				unicast_send(&unicast_connection, &addr);		
-        		    }
-        		} else {
-        			broadcast_send(&broadcast_connection);
-        		}
-        	} 
+        else {
+          print_packet_uart(p);
         }
+#endif
+        packet_deallocate(p);
+      }
     }
     PROCESS_END();
-}
-/*************************************************************************/
-PROCESS_THREAD(low_layer_forward_up, ev, data){
-	static uint8_t *packet;
-	PROCESS_BEGIN();
-	while (1){
-		PROCESS_WAIT_EVENT_UNTIL(ev == FORWARD_UP_EVENT);
-		packet = data;
-#if !SINK
-		printf("%s: APP - new packet\n", process_current->name);
-		printArray(packet, packet[HEADER_LEN_POS]);
-#endif
-	}
-	PROCESS_END();
-}
-/*************************************************************************/
-PROCESS_THREAD(config_incoming_packet, ev, data){
-	static uint8_t *packet;
-	PROCESS_BEGIN();
-	while(1){
-		PROCESS_WAIT_EVENT_UNTIL(ev == CONFIG_PACKET_EVENT);
-		packet = data;
-		header h;
-		array2header(packet, &h);
-		int i = HEADER_LENGTH;
-		uint8_t new_payload[h.len - HEADER_LENGTH];
-		uint8_t i_new_payload = 0;
-
-		//
-		uint8_t new_payload_la[acceptedTable.len * 2];
-		uint8_t new_payload_gri[3 + RULE_LEN];
-		uint8_t tmp[RULE_LEN];
-		uint8_t tmp2[RULE_LEN];
-		uint8_t tmp_array[PACKET_LEN];
-		accepted_element *ae;
-		flow_table_element * fe;
-		uint8_t j, k, nrule;
-		address a;
-		uint8_t id_h;				
-		uint8_t id_l;
-					
-		//
-
-		while (i<h.len){
-			if ((packet[i] & 128) == CNF_READ){
-				//READ
-				switch (packet[i] & 127){
-				case CNF_ID_ADDR:
-					new_payload[i_new_payload] = packet[i];
-					new_payload[i_new_payload + 1] = cf.MY_ADDRESS.addr_h;
-					new_payload[i_new_payload + 2] = cf.MY_ADDRESS.addr_l;
-					i_new_payload = i_new_payload + 3;
-					i = i + 3;
-					break;
-				case CNF_ID_NET_ID:
-					new_payload[i_new_payload] = packet[i];
-					new_payload[i_new_payload + 1] = 0;
-					new_payload[i_new_payload + 2] = cf.NET_ID;
-					i_new_payload = i_new_payload + 3;
-					i = i + 3;
-					break;
-				case CNF_ID_CNT_BEACON_MAX:
-					new_payload[i_new_payload] = packet[i];
-					new_payload[i_new_payload + 1] = 0;
-					new_payload[i_new_payload + 2] = cf.SEND_BEACON_PACKET_INTERVALL;
-					i_new_payload = i_new_payload + 3;
-					i = i + 3;
-					break;
-				case CNF_ID_CNT_REPORT_MAX:
-					new_payload[i_new_payload] = packet[i];
-					new_payload[i_new_payload + 1] = 0;
-					new_payload[i_new_payload + 2] = cf.SEND_REPORT_PACKET_INTERVALL;
-					i_new_payload = i_new_payload + 3;
-					i = i + 3;
-					break;
-				case CNF_ID_CNT_UPDTABLE_MAX:
-					new_payload[i_new_payload] = packet[i];
-					new_payload[i_new_payload + 1] = 0;
-					new_payload[i_new_payload + 2] = cf.UPDTABLE_MAX;
-					i = i + 3;
-					break;
-				case CNF_ID_TTL_MAX:
-					new_payload[i_new_payload] = packet[i];
-					new_payload[i_new_payload + 1] = 0;
-					new_payload[i_new_payload + 2] = cf.TTL_MAX;
-					i_new_payload = i_new_payload + 3;
-					i = i + 3;
-					break;
-				case CNF_ID_RSSI_MIN:
-					new_payload[i_new_payload] = packet[i];
-					new_payload[i_new_payload + 1] = 0;
-					new_payload[i_new_payload + 2] = cf.RSSI_MIN;
-					i_new_payload = i_new_payload + 3;
-					i = i + 3;
-					break;
-				case CNF_LIST_ACCEPTED:
-					k=0;
-					ae = acceptedTable.root;
-					for (j=0; j<acceptedTable.len; j++){
-						new_payload_la[k] = ae->address.addr_h;
-						new_payload_la[k+1] = ae->address.addr_l;
-						k++;
-						ae = ae->next;
-					}
-					send_packet(
-							HEADER_LENGTH + (acceptedTable.len*2),
-							cf.NET_ID,
-							cf.MY_ADDRESS,
-							sink_address,
-							CONFIG,
-							cf.TTL_MAX,
-							neighbor2sink.address,
-							new_payload_la);
-					i = i + 3;
-					break;
-				case CNF_GET_RULE_INDEX:
-					new_payload_gri[0] = packet[i];
-					new_payload_gri[1] = packet[i + 1];
-					new_payload_gri[2] = packet[i + 2];
-					int jji, jj;
-					jji = (packet[i +1] << 8) | packet[i + 2];
-					fe = flowTable.root;
-					for (jj=0; jj<=jji && jji < flowTable.len; jj++){
-						fe = fe->next;
-					}
-					rule2array(fe->rule, tmp, 1);
-					for (k=0; k<RULE_LEN; k++){
-						new_payload_gri[k + 3] = tmp[k];
-					}
-					send_packet(
-							HEADER_LENGTH + (3 + RULE_LEN),
-							cf.NET_ID,
-							cf.MY_ADDRESS,
-							sink_address,
-							CONFIG,
-							cf.TTL_MAX,
-							neighbor2sink.address,
-							new_payload_gri);
-					i = i + 3;
-					break;
-				}
-			} else {
-				//WRITE
-				switch (packet[i] & 127){
-				case CNF_ID_ADDR:
-					cf.MY_ADDRESS.addr_h = packet[i +1];
-					cf.MY_ADDRESS.addr_l = packet[i +2];
-					//////////////////////////////////////// set rime address
-					linkaddr_t linkaddr;
-					linkaddr.u8[0] = cf.MY_ADDRESS.addr_h;
-					linkaddr.u8[1] = cf.MY_ADDRESS.addr_l;
-					linkaddr_set_node_addr(&linkaddr);
-					i = i + 3;
-					break;
-				case CNF_ID_NET_ID:
-					cf.NET_ID = packet[i +2];
-					i = i + 3;
-					break;
-				case CNF_ID_CNT_BEACON_MAX:
-					cf.SEND_BEACON_PACKET_INTERVALL = packet[i +2];
-					i = i + 3;
-					break;
-				case CNF_ID_CNT_REPORT_MAX:
-					cf.SEND_REPORT_PACKET_INTERVALL = packet[i + 2];
-					i = i + 3;
-					break;
-				case CNF_ID_CNT_UPDTABLE_MAX:
-					cf.UPDTABLE_MAX = packet[i + 2];
-					i = i + 3;
-					break;
-				case CNF_ID_TTL_MAX:
-					cf.TTL_MAX = packet[i + 2];
-					i = i + 3;
-					break;
-				case CNF_ID_RSSI_MIN:
-					cf.RSSI_MIN = packet[i + 2];
-					i = i + 3;
-					break;
-				case CNF_ADD_ACCEPTED:
-					a.addr_h = packet[i + 1];
-					a.addr_l = packet[i + 2];
-					accepted_table_add(&acceptedTable, a);
-					i = i + 3;
-					break;
-				case CNF_REMOVE_ACCEPTED:
-					a.addr_h = packet[i + 1];
-					a.addr_l = packet[i + 2];
-					accepted_table_remove(&acceptedTable, a);
-					i = i + 3;
-					break;
-				case CNF_ADD_RULE:
-					nrule = packet[i + 1];
-					i = i + 2;
-					for (j = 0; j<nrule ; j++){
-						split(packet, tmp, i+j*(RULE_LEN), RULE_LEN);
-						flow_table_add(&flowTable, tmp);
-						i = i + RULE_LEN;
-					}
-					break;
-				case CNF_REMOVE_RULE:
-					nrule = packet[i + 1];
-					i = i + 2;
-					for (j=0; j<nrule; j++){
-						split(packet, tmp, i+j*(RULE_LEN), RULE_LEN);
-						fe = flowTable.root;
-						for (k=0; k<flowTable.len; k++){
-							rule2array(fe->rule, tmp2, 0);
-							if (arrayCmp(tmp2, tmp, 0) == 0){
-								flow_table_remove(&flowTable, *fe);
-								break;
-							}
-							fe = fe->next;
-						}
-						i = i + RULE_LEN;
-					}
-					break;
-				case CNF_REMOVE_RULE_INDEX:
-					fe = flowTable.root;
-					for (k=0; k<packet[i + 2]; k++){
-						fe = fe->next;
-					}
-					flow_table_remove(&flowTable, *fe);
-					i = i + 3;
-					break;
-				case CNF_RESET:
-					watchdog_reboot();
-					break;
-				case CNF_ADD_FUNCTION:
-#if ELF_ENABLE
-					id_h = packet[i + 1];
-					id_l = packet[i + 2];
-					uint8_t position;
-					position = packet[i + 3];
-					uint8_t total_elements;
-					total_elements = packet[i + 4];
-
-					//cerca o crea nuovo function_root
-					function_root *fr;
-					fr = function_list_root_search_by_id(id_h, id_l);
-					if (fr == NULL){
-						fr = function_list_root_new_element(id_h, id_l, total_elements);
-					}
-
-					//aggiungi elemento alla function
-					split(packet, tmp_array, HEADER_LENGTH + 5, h.len - HEADER_LENGTH - 5);
-					function_root_add_element(fr, position, tmp_array, h.len - HEADER_LENGTH - 5);
-
-					//se ho ricevuto tutta la funzione
-					if (fr->elements_number == fr->total_elements){
-						int fd;
-						char file[16];
-						sprintf(file, "f_%d_%d.ce", fr->id_h, fr->id_l);
-						function_root_compose_packet(fr);
-
-						/* Kill any old processes. */
-						  if(elfloader_autostart_processes != NULL) {
-						    autostart_exit(elfloader_autostart_processes);
-						  }
-
-						  fd = cfs_open(file, CFS_READ | CFS_WRITE);
-						  if(fd < 0) {
-#if !SINK
-							printf("exec: could not open %s\n", file);
-#endif
-						  } else {
-						    int ret;
-						    char *print, *symbol;
-
-						    ret = elfloader_load(fd);
-						    cfs_close(fd);
-						    symbol = "";
-#if !SINK
-						    switch(ret) {
-						    case ELFLOADER_OK:
-						      print = "OK";
-						      break;
-						    case ELFLOADER_BAD_ELF_HEADER:
-						      print = "Bad ELF header";
-						      break;
-						    case ELFLOADER_NO_SYMTAB:
-						      print = "No symbol table";
-						      break;
-						    case ELFLOADER_NO_STRTAB:
-						      print = "No string table";
-						      break;
-						    case ELFLOADER_NO_TEXT:
-						      print = "No text segment";
-						      break;
-						    case ELFLOADER_SYMBOL_NOT_FOUND:
-						      print = "Symbol not found: ";
-						      symbol = elfloader_unknown;
-						      break;
-						    case ELFLOADER_SEGMENT_NOT_FOUND:
-						      print = "Segment not found: ";
-						      symbol = elfloader_unknown;
-						      break;
-						    case ELFLOADER_NO_STARTPOINT:
-						      print = "No starting point";
-						      break;
-						    default:
-						      print = "Unknown return code from the ELF loader (internal bug)";
-						      break;
-						    }
-							printf("%s %s\n", print, symbol);
-#endif
-						    if(ret == ELFLOADER_OK) {
-						      int i;
-						      for(i = functionsRoot.len; elfloader_autostart_processes[i] != NULL; ++i) {
-#if !SINK
-						    	  printf("exec: starting process %s\n",elfloader_autostart_processes[i]->name);
-#endif
-						    	  functions_root_add(fr->id_h, fr->id_l, elfloader_autostart_processes[i]);
-						      }
-						      autostart_start(elfloader_autostart_processes);
-						      cfs_remove(file);
-						    }
-
-						  }
-						function_list_root_remove_element_by_id(id_h, id_l);
-					}
-					i = i + h.len - HEADER_LENGTH;
-					if (functionsRoot.len > 0){
-						process_post(functionsRoot.root->process, FORWARD_UP_PROCESS_EVENT, packet);
-					}
-#endif
-					break;
-				case CNF_REMOVE_FUNCTION:
-					break;
-				}
-			}
-		}
-		if (i_new_payload > 0) {
-			send_packet(
-					HEADER_LENGTH + i_new_payload,
-					cf.NET_ID,
-					cf.MY_ADDRESS,
-					sink_address,
-					CONFIG,
-					cf.TTL_MAX,
-					neighbor2sink.address,
-					new_payload);
-		}
-	}
-	PROCESS_END();
-}
-/*************************************************************************/
-PROCESS_THREAD(td_incoming_beacon_packet, ev, data){
+  }
+/*----------------------------------------------------------------------------*/
+  PROCESS_THREAD(rf_b_send_proc, ev, data) {
+    PROCESS_EXITHANDLER(broadcast_close(&bc);)
     PROCESS_BEGIN();
-    static uint8_t *packet;
-    while (1) {
-        PROCESS_WAIT_EVENT();
-        if (ev == INCOMING_BEACON_PACKET_EVENT) {
-	    started = 1;
-            packet = data;
-            header header;
-            uint8_t headerarray[HEADER_LENGTH];
-            split(packet, headerarray, 0, HEADER_LENGTH);
-            array2header(packet, &header);
-            uint8_t payload[header.len - HEADER_LENGTH];
-            split(packet, payload, HEADER_LENGTH, header.len - HEADER_LENGTH);
-            neighbor new_neighbor;
-            new_neighbor.address.addr_h = header.src.addr_h;
-            new_neighbor.address.addr_l = header.src.addr_l;
-            new_neighbor.rssi = (uint8_t) (- packetbuf_attr(PACKETBUF_ATTR_RSSI));    //// -80:0 -> 0:80
-        /*http://sourceforge.net/p/contiki/mailman/message/31805752/*//////////////////////////////////////
-            new_neighbor.batt = payload[BATT_POS];
-            new_neighbor.nhop = payload[NHOP_POS]+1;
+    broadcast_open(&bc, BROADCAST_CONNECTION_NUMBER, &broadcast_callbacks);
+    while(1) {
+      PROCESS_WAIT_EVENT_UNTIL(ev == RF_B_SEND_EVENT);
+      packet_t* p = (packet_t*)data;
 
-            if (new_neighbor.rssi >= cf.RSSI_MIN ) {
+      if (p != NULL){
 
-            	//aggiorno la neighbor_table
-            	short_neighbor_element *sne = find_element_by_address(neighbor_table, new_neighbor.address);
-            	if (sne != NULL) {
-            		if ((sne->array)[2] != new_neighbor.rssi){
-            			neighbor2array(new_neighbor, sne->array, 0);
-            	        }
-            	} else {
-            		uint8_t tmp[NEIGHBOR_LEN -2];
-            	    neighbor2array(new_neighbor, tmp, 0);
-            	    neighbor_table_add(&neighbor_table, tmp);
-            	}
-
-            	//aggiorno il neighbor2sink
-            	if (addressCmp(header.next_hop, cf.MY_ADDRESS) && addressCmp(header.next_hop, BROADCAST)){
-            		if (find_best_neighbor(new_neighbor, neighbor2sink) > 0) {
-            		// aggiorna neighbor2sink e flow_table
-            	        neighbor2sink = new_neighbor;
-			sink_address = header.next_hop;
-			update_rule2sink(header.next_hop, header.src);
-            		}
-            	}
-            }
-        }
+        PRINTF("[TXB]: ");
+        print_packet(p);
+        PRINTF("\n");
+        
+        uint8_t* a = (uint8_t*)p;
+        packetbuf_copyfrom(a,p->header.len);  
+        broadcast_send(&bc);
+        packet_deallocate(p);
+      }
     }
     PROCESS_END();
-}
-/*************************************************************************/
-PROCESS_THREAD(td_send_beacon_packet, ev, data){
-	static struct etimer et;
+  }
+/*----------------------------------------------------------------------------*/
+  PROCESS_THREAD(timer_proc, ev, data) {
+    static struct etimer et;
     PROCESS_BEGIN();
-    etimer_set(&et, cf.SEND_BEACON_PACKET_INTERVALL * CLOCK_SECOND);
-    while (1) {
-        PROCESS_WAIT_EVENT_UNTIL(etimer_expired(&et));
-	if (started){
-		uint8_t payload[BEACON_LEN];
-        	payload[NHOP_POS] = neighbor2sink.nhop;
-#if BATTERY_ENABLED		        	
-		SENSORS_ACTIVATE(battery_sensor);
-        	payload[BATT_POS] = battery_sensor.value(0);	////////////////////////////
-        	SENSORS_DEACTIVATE(battery_sensor);
-#else
-		payload[BATT_POS] = 255;
+
+    while(1) {
+      etimer_set(&et, 3 * CLOCK_SECOND);
+      PROCESS_WAIT_EVENT_UNTIL(etimer_expired(&et));
+      process_post(&main_proc, TIMER_EVENT, (process_data_t)NULL);
+    }
+    PROCESS_END();
+  }
+/*----------------------------------------------------------------------------*/
+  PROCESS_THREAD(beacon_timer_proc, ev, data) {
+    static struct etimer et;
+    
+    PROCESS_BEGIN();
+    while(1){
+#if !SINK
+      if (!conf.is_active){
+        PROCESS_WAIT_EVENT_UNTIL(ev == ACTIVATE_EVENT);
+      }
 #endif
-        	header h;
-        	h.len = HEADER_LENGTH + BEACON_LEN;
-        	h.net_id = cf.NET_ID;
-        	h.src = cf.MY_ADDRESS;
-        	h.dst = BROADCAST;
-        	h.type = BEACON;
-        	h.ttl = cf.TTL_MAX;
-        	h.next_hop = sink_address;
-		send_packet(h.len, h.net_id, h.src, h.dst, h.type, h.ttl, h.next_hop, payload);
-        }
-        etimer_set(&et, cf.SEND_BEACON_PACKET_INTERVALL * CLOCK_SECOND);
+      etimer_set(&et, conf.beacon_period * CLOCK_SECOND);
+      PROCESS_WAIT_EVENT_UNTIL(etimer_expired(&et));
+      process_post(&main_proc, RF_SEND_BEACON_EVENT, (process_data_t)NULL);
     }
     PROCESS_END();
-}
-/*************************************************************************/
-PROCESS_THREAD(td_send_report_packet, ev, data){
-	static struct etimer et;
+  }
+/*----------------------------------------------------------------------------*/
+  PROCESS_THREAD(report_timer_proc, ev, data) {
+    static struct etimer et;
+    
     PROCESS_BEGIN();
-    etimer_set(&et, cf.SEND_REPORT_PACKET_INTERVALL * CLOCK_SECOND);
-    while (1) {
-        PROCESS_WAIT_EVENT_UNTIL(etimer_expired(&et));
-	printf("Report?");
-        if (neighbor_table.table_len > 0) {
-	printf("Report!");
-        	uint8_t payload[3 + (neighbor_table.table_len * 3)];
-        	payload[0] = neighbor2sink.nhop;
-
-#if BATTERY_ENABLED		        	
-		SENSORS_ACTIVATE(battery_sensor);
-        	payload[1] = battery_sensor.value(0);	////////////////////////////
-        	SENSORS_DEACTIVATE(battery_sensor);
-#else
-		payload[1] = 255;
+    while(1){
+#if !SINK
+      if (!conf.is_active){
+        PROCESS_WAIT_EVENT_UNTIL(ev == ACTIVATE_EVENT);
+      }
 #endif
-        	payload[2] = neighbor_table.table_len;
-
-        	int k=3;
-        	short_neighbor_element *e;
-        	e = neighbor_table.root_table;
-        	int i, j;
-        	for (i=0; i<neighbor_table.table_len; i++) {
-        		for (j=0; j < NEIGHBOR_LEN -2; j++){
-        			payload[k + j] = (e->array)[j];
-        	        }
-        		k = k + NEIGHBOR_LEN -2;
-        	    e = e->next;
-        	}
-
-        	header h;
-        	h.len = HEADER_LENGTH + 3 + (neighbor_table.table_len * 3);
-        	h.net_id = cf.NET_ID;
-        	h.src = cf.MY_ADDRESS;
-        	h.dst = sink_address;
-        	h.type = REPORT;
-        	h.ttl = cf.TTL_MAX;
-        	h.next_hop = neighbor2sink.address;
-        	
-        	//neighbor2sink_reset(); TODO controllare cosa succede se si rimuove un nx hop vs sink
-        	/////////////////////////////////////////// if == SINK
-#if SINK
-			neighbor2sink.nhop = 0;
-        		sink_address = cf.MY_ADDRESS;	//sink_address = *SRC;
-        	    //
-        	    static uint8_t packet[PACKET_LEN];
-        	    header2array(h, packet);
-        	    for (i=0; i<h.len; i++){
-        	    	packet[i + HEADER_LENGTH] = payload[i];
-        	    }
-		    forwarding2controller(packet);
-        	    //
-#else
-		    send_packet(h.len, h.net_id, h.src, h.dst, h.type, h.ttl, h.next_hop, payload);
-#endif		
-		neighbor_table_remove_all(&neighbor_table);
-	}
-        etimer_set(&et, cf.SEND_REPORT_PACKET_INTERVALL * CLOCK_SECOND);
+      etimer_set(&et, conf.report_period * CLOCK_SECOND);
+      PROCESS_WAIT_EVENT_UNTIL(etimer_expired(&et));
+      process_post(&main_proc, RF_SEND_REPORT_EVENT, (process_data_t)NULL);
     }
     PROCESS_END();
-}
-/*************************************************************************/
-PROCESS_THREAD(forwarding_packet_to_sink, ev, data){
-	static uint8_t *packet;
-	PROCESS_BEGIN();
-	while (1){
-		PROCESS_WAIT_EVENT_UNTIL(ev == FORWARDING_PACKET_TO_SINK_EVENT);
-		packet = data;
-		header h;
-		array2header(packet, &h);
-		h.next_hop = neighbor2sink.address;
-		h.ttl --;
-		updateStats(&(flowTable.root->rule.stats));
-		header2array(h, packet);
-		send_packet2(packet);
-	}
-	PROCESS_END();
-}
-/*************************************************************************/
-PROCESS_THREAD(forwarding_data_packet, ev, data){
-	static uint8_t *packet;
-	static flow_table_element *e;
-	static boolean found = 0;
-	static boolean multi = 0;
-	PROCESS_BEGIN();
-	while (1){
-		PROCESS_WAIT_EVENT_UNTIL(ev == FORWARDING_DATA_PACKET_EVENT);
-		packet = data;
-		header h;
-		array2header(packet, &h);
-		int i, j;
-		e = flowTable.root;
-		for (i=0; i<flowTable.len; i++){
-			for (j=0; j<WINDOWS_MAX; j++){
-				if (checkWindow(packet, e->rule.windows[j]) == 1){
-					found = 1;
-				} else {
-					found = 0;
-					break;
-				}
-			}
-			if (found == 1){
-				multi = runAction(packet, e->rule.action);
-				updateStats(&(e->rule.stats));
-				if (multi == 1){
-					i=0;
-					e = flowTable.root;
-				}
-			} else {
-				e = e->next;
-			}
-		}
-		if (found == 0){
-			// TODO fix new kind of packet
-			h.type = h.type + REQUEST;
-			h.next_hop = neighbor2sink.address;
-			h.ttl = cf.TTL_MAX;
-			header2array(h, packet);
-
-				/////////////////////////////////////////// if == SINK
-			if (cf.MY_ADDRESS.addr_h == 1 && cf.MY_ADDRESS.addr_l == 0){
-				forwarding2controller(packet);
-				///////////////////////////////////////////
-			} else {
-				send_packet2(packet);
-			}
-		}
-	}
-	PROCESS_END();
-}
-/*************************************************************************/
-PROCESS_THREAD(forwarding_incoming_response_packet, ev, data){
-	static uint8_t *packet;
-	PROCESS_BEGIN();
-	while(1){
-		PROCESS_WAIT_EVENT_UNTIL(ev == FORWARDING_RESPONSE_PACKET_EVENT);
-		packet = data;
-		header h;
-		array2header(packet, &h);
-		uint8_t nrul = (h.len - HEADER_LENGTH) / (RULE_LEN -1);
-		if ((nrul * (RULE_LEN -1)) + HEADER_LENGTH == h.len){
-			static uint8_t *tmp;
-			int i, j;
-			for (i=0, j=0; i<nrul; i++, j=j+RULE_LEN-1){
-				split(packet, tmp, HEADER_LENGTH + j, RULE_LEN -1);
-				flow_table_add(&flowTable, tmp);
-			}
-		}
-	}
-	PROCESS_END();
-}
-/*************************************************************************/
-PROCESS_THREAD(forwarding_to_controller, ev, data){
-	static uint8_t *packet;
-	PROCESS_BEGIN();
-	while (1){
-		PROCESS_WAIT_EVENT_UNTIL(ev == FORWARDING_TO_CONTROLLER_EVENT);
-		packet = data;
-		int i;
-		for (i=0; i<packet[HEADER_LEN_POS]; i++){
-			printf("%c", packet[i]);
-		}
-	}
-	PROCESS_END();
-}
-/*************************************************************************/
-PROCESS_THREAD(forwarding_update_table, ev, data){
-	static struct etimer et;
-	PROCESS_BEGIN();
-	etimer_set(&et, cf.UPDTABLE_MAX * CLOCK_SECOND);
-	while (1) {
-		PROCESS_WAIT_EVENT_UNTIL(etimer_expired(&et));
-		flow_table_element *e;
-		e = flowTable.root;
-		int i;
-		for (i=0; i<flowTable.len; i++){
-			if (e->rule.stats.ttl != RULE2SINK_TTL_NO_DEC){
-				e->rule.stats.ttl--;
-			}
-			e = e->next;
-		}
-		etimer_set(&et, cf.UPDTABLE_MAX * CLOCK_SECOND);
-	}
-	PROCESS_END();
-}
-/*************************************************************************/
-PROCESS_THREAD(test_serial, ev, data){
-	static uint8_t packet[PACKET_LEN];
-	static struct etimer et;
-	PROCESS_BEGIN();
-	etimer_set(&et, CLOCK_SECOND / 100);
-	uint8_t x;
-	while(1){
-		PROCESS_WAIT_EVENT_UNTIL(etimer_expired(&et));
-		if (inputStream.len > 0){
-			static int i;
-			/////
-			for (i=0; i<=HEADER_LEN_POS; i++){
-				x = input_stream_pop(&inputStream);
-				packet[i] = x;
-				etimer_set(&et, CLOCK_SECOND / 100);
-				PROCESS_WAIT_EVENT_UNTIL(etimer_expired(&et));
-			}
-			/////
-			for (i=HEADER_LEN_POS + 1; i<packet[HEADER_LEN_POS]; i++){
-				x = input_stream_pop(&inputStream);
-				packet[i] = x;
-				etimer_set(&et, CLOCK_SECOND / 100);
-				PROCESS_WAIT_EVENT_UNTIL(etimer_expired(&et));
-			}
-				recv_packet(NULL, NULL, packet);
-		}
-		etimer_set(&et, CLOCK_SECOND / 100);
-	}
-	PROCESS_END();
-}
-/*************************************************************************/
-PROCESS_THREAD(prova, ev, data) {
+  }
+/*----------------------------------------------------------------------------*/
+  PROCESS_THREAD(packet_handler_proc, ev, data) {
     PROCESS_BEGIN();
-    if (cf.MY_ADDRESS.addr_h == 1 && cf.MY_ADDRESS.addr_l == 0){
-    	neighbor2sink.nhop = 0;
-    	cf.MY_ADDRESS.addr_h = 1;	//
-    	cf.MY_ADDRESS.addr_l = 0;	//
-    	//////////////////////////////////////// set rime address
-    	linkaddr_t linkaddr;
-    	linkaddr.u8[0] = cf.MY_ADDRESS.addr_h;
-    	linkaddr.u8[1] = cf.MY_ADDRESS.addr_l;
-    	linkaddr_set_node_addr(&linkaddr);
-    	sink_address = cf.MY_ADDRESS;
-    	neighbor2sink.address = cf.MY_ADDRESS;
-    } else {
-    	//neighbor2sink.nhop = rand() % 256;
+    while(1) {
+      PROCESS_WAIT_EVENT_UNTIL(ev == NEW_PACKET_EVENT);
+      packet_t* p = (packet_t*)data;
+
+      PRINTF("[RX ]: ");
+      print_packet(p);
+      PRINTF("\n");
+      handle_packet(p);
     }
     PROCESS_END();
-}
-/*************************************************************************/
-PROCESS_THREAD(low_layer_analyzer, ev, data){
-	static uint8_t *packet;
-	PROCESS_BEGIN();
-	while(1){
-		PROCESS_WAIT_EVENT_UNTIL(ev == ANALYZER_EVENT);
-		packet = data;
-		uint8_t len = packet[0];
-		uint8_t l2p[len];
-		uint8_t i;
-		for (i=0; i<len-1; i++){
-			l2p[i] = packet[i+1];
-		}
-		uint8_t l2ps;
-		l2ps=0;
-		boolean fcfIntraPAN;
-		fcfIntraPAN = ((l2p[0] >> 6) & 0x01) != 0;
-		uint8_t fcfDestAddrMode;
-		fcfDestAddrMode = (l2p[1] >> 2) & 0x03;
-		uint8_t fcfSrcAddrMode;
-		fcfSrcAddrMode = (l2p[1] >> 6) & 0x03;
-
-		if (fcfDestAddrMode > 0){
-			l2ps +=2;
-			if (fcfDestAddrMode == 2){
-				l2ps +=2;
-			} else if (fcfDestAddrMode == 3){
-				l2ps +=8;
-			} else continue;
-		}
-		if (fcfSrcAddrMode > 0){
-			if (!fcfIntraPAN){
-				l2ps +=2;
-			}
-			if (fcfSrcAddrMode == 2){
-				l2ps +=2;
-			} else if (fcfSrcAddrMode == 3){
-				l2ps +=8;
-			} else continue;
-		}
-
-		l2ps +=3; //+FCF+SeqN
-		if (l2p[l2ps] > 63){
-//printf("l2ps=%d, l2p[l2ps]=%d\n", l2ps, l2p[l2ps]);
-			header h;
-			h.len = HEADER_LENGTH + len +3;
-			h.net_id = cf.NET_ID;
-			h.src = cf.MY_ADDRESS;
-			//h.dst.addr_h = 0;
-			//h.dst.addr_l = 0;
-			h.dst = sink_address;
-			h.type = REQUEST + DATA;
-			h.ttl = cf.TTL_MAX;
-			h.next_hop = neighbor2sink.address;
-			static uint8_t new_packet[PACKET_LEN];
-			header2array(h, new_packet);
-//
-			new_packet[10] = 1;
-			new_packet[11] = 0;
-			new_packet[12] = 1;
-			//
-			for (i=HEADER_LENGTH +3; i < h.len; i++){
-				new_packet[i] = l2p[i - HEADER_LENGTH -3];
-			}
-			if ((cf.MY_ADDRESS.addr_h == 1) && (cf.MY_ADDRESS.addr_l == 0)){	//////////////IF SINK
-				forwarding2controller(new_packet);
-			} else {															/////////////////////
-				send_packet2(new_packet);
-			}
-		} else {
-			continue;
-		}
-
-	}
-	PROCESS_END();
-}
-/*************************************************************************/
+  }
+/*----------------------------------------------------------------------------*/
+/** @} */
