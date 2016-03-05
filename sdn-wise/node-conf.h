@@ -34,14 +34,13 @@
 #include "address.h"
 
   typedef struct node_conf_struct {
-    address_t my_address;
     uint8_t my_net;
+    address_t my_address;
+    uint8_t packet_ttl;
+    uint8_t rssi_min;
     uint16_t beacon_period;
     uint16_t report_period;
-    uint16_t update_table_period; 
-    uint16_t sleep_period;  
-    uint8_t min_rssi;
-    uint8_t max_ttl;
+    uint16_t rule_ttl; 
     address_t nxh_vs_sink;
     uint8_t hops_from_sink;
     uint8_t rssi_from_sink;  

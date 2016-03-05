@@ -37,9 +37,9 @@
 #define _NET  1
 #define _BEACON_PERIOD  5
 #define _REPORT_PERIOD  10
-#define _UPDATE_TABLE_PERIOD  1
-#define _MIN_RSSI 0
-#define _MAX_TTL  100;
+#define _RULE_TTL  100
+#define _RSSI_MIN 0
+#define _PACKET_TTL  100;
 
 #define DEBUG 1
 #if DEBUG && (!SINK || DEBUG_SINK)
@@ -65,9 +65,9 @@
     conf.my_net = _NET;
     conf.beacon_period = _BEACON_PERIOD;
     conf.report_period = _REPORT_PERIOD;
-    conf.update_table_period = _UPDATE_TABLE_PERIOD;
-    conf.min_rssi = _MIN_RSSI;
-    conf.max_ttl = _MAX_TTL;
+    conf.rule_ttl = _RULE_TTL;
+    conf.rssi_min = _RSSI_MIN;
+    conf.packet_ttl = _PACKET_TTL;
 #if SINK
     conf.is_active = 1;
     conf.nxh_vs_sink = conf.my_address;
@@ -78,7 +78,7 @@
     conf.is_active = 0;
     set_broadcast_address(&(conf.nxh_vs_sink));
     set_broadcast_address(&(conf.sink_address));
-    conf.hops_from_sink = _MAX_TTL;
+    conf.hops_from_sink = _PACKET_TTL;
     conf.rssi_from_sink = 0;
 #endif 
   }
@@ -89,10 +89,10 @@
     print_address(&(conf.my_address));
     PRINTF("\n");
     PRINTF("[CFG]: - Network ID: %d\n[CFG]: - Beacon Period: %d\n[CFG]: - "
-      "Report Period: %d\n[CFG]: - Update Table Period: %d\n[CFG]: - Min RSSI: "
-      "%d\n[CFG]: - Max TTL: %d\n[CFG]: - Next Hop -> Sink: ",
+      "Report Period: %d\n[CFG]: - Rules TTL: %d\n[CFG]: - Min RSSI: "
+      "%d\n[CFG]: - Packet TTL: %d\n[CFG]: - Next Hop -> Sink: ",
       conf.my_net, conf.beacon_period, conf.report_period, 
-      conf.update_table_period, conf.min_rssi, conf.max_ttl);
+      conf.rule_ttl, conf.rssi_min, conf.packet_ttl);
     print_address(&(conf.nxh_vs_sink));
     PRINTF(" (hops: %d, rssi: %d)\n", conf.hops_from_sink, conf.rssi_from_sink);
     PRINTF("[CFG]: - Sink: ");

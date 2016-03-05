@@ -41,49 +41,47 @@
 #include "sdn-wise.h"
 
 typedef enum conf_id{
-  ID_MY_ADDRESS,
-  ID_MY_NET,
-  ID_BEACON_PERIOD,
-  ID_REPORT_PERIOD,
-  ID_UPDATE_TABLE_PERIOD,
-  ID_SLEEP_PERIOD,
-  ID_MAX_TTL,
-  ID_MIN_RSSI,
-
-  ID_ADD_ACCEPTED,
-  ID_REMOVE_ACCEPTED,  
-  ID_LIST_ACCEPTED,
-  ID_ADD_RULE,
-  ID_REMOVE_RULE,
-  ID_REMOVE_RULE_INDEX,
-  ID_GET_RULE_INDEX,
-  ID_RESET,
-  ID_ADD_FUNCTION,
-  ID_REMOVE_FUNCTION,
+  RESET,
+  MY_NET,
+  MY_ADDRESS,
+  PACKET_TTL,
+  RSSI_MIN,
+  BEACON_PERIOD,
+  REPORT_PERIOD,
+  RULE_TTL,
+  ADD_ALIAS,
+  REM_ALIAS,  
+  GET_ALIAS,
+  ADD_RULE,
+  REM_RULE,
+  GET_RULE,
+  ADD_FUNCTION,
+  REM_FUNCTION,
+  GET_FUNCTION
 } conf_id_t;
 
-const uint8_t conf_size[ID_MIN_RSSI+1] = 
+const uint8_t conf_size[RULE_TTL+1] = 
 {
-  sizeof(conf.my_address),          // MY_ADDRESS
-  sizeof(conf.my_net),              // MY_NET
-  sizeof(conf.beacon_period),       // BEACON_PERIOD
-  sizeof(conf.report_period),       // REPORT_PERIOD
-  sizeof(conf.update_table_period), // UPDATE_TABLE_PERIOD
-  sizeof(conf.sleep_period),        // SLEEP_PERIOD
-  sizeof(conf.max_ttl),             // MAX_TTL
-  sizeof(conf.min_rssi)             // MIN_RSSI
+  0,
+  sizeof(conf.my_net),              
+  sizeof(conf.my_address),          
+  sizeof(conf.packet_ttl),
+  sizeof(conf.rssi_min),
+  sizeof(conf.beacon_period),       
+  sizeof(conf.report_period),       
+  sizeof(conf.rule_ttl)
 };
 
-const void* conf_ptr[ID_MIN_RSSI+1] = 
+const void* conf_ptr[RULE_TTL+1] = 
 {
-  &conf.my_address,           // MY_ADDRESS
-  &conf.my_net,               // MY_NET
-  &conf.beacon_period,        // BEACON_PERIOD
-  &conf.report_period,        // REPORT_PERIOD
-  &conf.update_table_period,  // UPDATE_TABLE_PERIOD
-  &conf.sleep_period,         // SLEEP_PERIOD
-  &conf.max_ttl,              // MAX_TTL
-  &conf.min_rssi              // MIN_RSSI
+  NULL,
+  &conf.my_net,              
+  &conf.my_address,          
+  &conf.packet_ttl,
+  &conf.rssi_min,
+  &conf.beacon_period,       
+  &conf.report_period,       
+  &conf.rule_ttl,              
 };
 
 #define CNF_READ 0
@@ -107,7 +105,7 @@ const void* conf_ptr[ID_MIN_RSSI+1] =
   handle_packet(packet_t* p)
   {
     
-    if (p->info.rssi >= conf.min_rssi && p->header.net == conf.my_net){
+    if (p->info.rssi >= conf.rssi_min && p->header.net == conf.my_net){
       if (p->header.typ == BEACON){
         PRINTF("[PHD]: Beacon\n");
         handle_beacon(p);
@@ -320,13 +318,25 @@ const void* conf_ptr[ID_MIN_RSSI+1] =
         switch (id)
         {
           // TODO
-          case ID_LIST_ACCEPTED:
-          case ID_GET_RULE_INDEX:
+          case RESET:
+          case GET_ALIAS:
+          case GET_RULE:
+          case GET_FUNCTION:
           break;
 
-          // TODO adattare le api alla dimensione variabile del payload
-          default:
+
+          case MY_NET:
+          case MY_ADDRESS:
+          case PACKET_TTL:
+          case RSSI_MIN:
+          case BEACON_PERIOD:
+          case REPORT_PERIOD:
+          case RULE_TTL:
+          // TODO check payload size
           memcpy(&(p->payload[i+1]), conf_ptr[id], conf_size[id]);
+          break;
+
+          default:
           break;
         }
         swap_addresses(&(p->header.src),&(p->header.dst));
@@ -336,22 +346,30 @@ const void* conf_ptr[ID_MIN_RSSI+1] =
         switch (id)
         {
           // TODO
-          case ID_ADD_ACCEPTED:
-          case ID_REMOVE_ACCEPTED:
-          case ID_ADD_RULE:
-          case ID_REMOVE_RULE:
-          case ID_REMOVE_RULE_INDEX:
-          case ID_ADD_FUNCTION:
-          case ID_REMOVE_FUNCTION:
+          case ADD_ALIAS:
+          case REM_ALIAS:
+          case ADD_RULE:
+          case REM_RULE:
+          case ADD_FUNCTION:
+          case REM_FUNCTION:
           break;
 
-          case ID_RESET:
+          case RESET:
           watchdog_reboot();
           break;
 
+          case MY_NET:
+          case MY_ADDRESS:
+          case PACKET_TTL:
+          case RSSI_MIN:
+          case BEACON_PERIOD:
+          case REPORT_PERIOD:
+          case RULE_TTL:
           // TODO adattare le api alla dimensione variabile del payload
-          default:
           memcpy((uint8_t*)conf_ptr[id], &(p->payload[i+1]), conf_size[id]);
+          break;
+
+          default:
           break;
         }
         packet_deallocate(p);
