@@ -32,6 +32,7 @@
 #include "net/linkaddr.h"  
 #include "dev/watchdog.h"
 #include "dev/uart1.h"
+#include "dev/leds.h"  
 #include "lib/list.h"
 #if CFS_ENABLED
 #include "cfs/cfs.h"
@@ -168,7 +169,8 @@
     packet_buffer_init();
     neighbor_table_init();
     address_list_init();
-    
+    leds_init();
+
     while(1) {
       PROCESS_WAIT_EVENT();
       switch(ev) {
@@ -182,10 +184,12 @@
         break;
 
         case UART_RECEIVE_EVENT:
+        leds_toggle(LEDS_GREEN);
         process_post(&packet_handler_proc, NEW_PACKET_EVENT, (process_data_t)data);
         break;
 
         case RF_B_RECEIVE_EVENT:
+        leds_toggle(LEDS_YELLOW);
         if (!conf.is_active){
           conf.is_active = 1;
           process_post(&beacon_timer_proc, ACTIVATE_EVENT, (process_data_t)NULL);
@@ -196,10 +200,12 @@
         break;
 
         case RF_SEND_BEACON_EVENT:
+        leds_toggle(LEDS_RED);
         rf_broadcast_send(create_beacon());
         break;
 
         case RF_SEND_REPORT_EVENT:
+        leds_toggle(LEDS_RED);
         rf_unicast_send(create_report());
         break;
       } 
@@ -217,6 +223,7 @@
       packet_t* p = (packet_t*)data;
 
       if (p != NULL){
+        p->header.ttl--;
 
         PRINTF("[TXU]: ");
         print_packet(p);
@@ -263,7 +270,7 @@
       packet_t* p = (packet_t*)data;
 
       if (p != NULL){
-
+        p->header.ttl--;
         PRINTF("[TXB]: ");
         print_packet(p);
         PRINTF("\n");

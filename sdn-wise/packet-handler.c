@@ -333,13 +333,20 @@ const void* conf_ptr[RULE_TTL+1] =
           case REPORT_PERIOD:
           case RULE_TTL:
           // TODO check payload size
-          memcpy(&(p->payload[i+1]), conf_ptr[id], conf_size[id]);
+          if (conf_size[id] == 1){
+            memcpy(&(p->payload[i+1]), conf_ptr[id], conf_size[id]);
+          } else if (conf_size[id] == 2) {
+            uint16_t value = *((uint16_t*)conf_ptr[id]);
+            p->payload[i+1] = value >> 8;
+            p->payload[i+2] = value & 0xFF; 
+          }
           break;
 
           default:
           break;
         }
         swap_addresses(&(p->header.src),&(p->header.dst));
+        p->header.len += conf_size[id];
         match_packet(p);
       } else {
         //WRITE
@@ -365,8 +372,13 @@ const void* conf_ptr[RULE_TTL+1] =
           case BEACON_PERIOD:
           case REPORT_PERIOD:
           case RULE_TTL:
-          // TODO adattare le api alla dimensione variabile del payload
-          memcpy((uint8_t*)conf_ptr[id], &(p->payload[i+1]), conf_size[id]);
+          if (conf_size[id] == 1){
+            memcpy((uint8_t*)conf_ptr[id], &(p->payload[i+1]), conf_size[id]);
+          } else if (conf_size[id] == 2) {
+            uint16_t h = p->payload[i+1] << 8;
+            uint16_t l = p->payload[i+2];            
+            *((uint16_t*)conf_ptr[id]) = h + l;
+          }
           break;
 
           default:
