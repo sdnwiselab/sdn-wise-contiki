@@ -62,10 +62,10 @@
   typedef enum operator_name {
     EQUAL,
     NOT_EQUAL,
-    BIGGER,
+    GREATER,
     LESS,
-    EQUAL_OR_BIGGER,
-    EQUAL_OR_LESS
+    GREATER_OR_EQUAL,
+    LESS_OR_EQUAL
   } operator_t;
 
   typedef enum set_name {

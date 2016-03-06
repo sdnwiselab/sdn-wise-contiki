@@ -170,10 +170,10 @@
     {
       case EQUAL: PRINTF(" = "); break;
       case NOT_EQUAL: PRINTF(" != "); break;  
-      case BIGGER: PRINTF(" > "); break; 
+      case GREATER: PRINTF(" > "); break; 
       case LESS: PRINTF(" < "); break; 
-      case EQUAL_OR_BIGGER: PRINTF(" >= "); break; 
-      case EQUAL_OR_LESS: PRINTF(" <= "); break;      
+      case GREATER_OR_EQUAL: PRINTF(" >= "); break; 
+      case LESS_OR_EQUAL: PRINTF(" <= "); break;      
     }
 
     switch(w->rhs_location)
@@ -560,10 +560,10 @@
     switch (op) {
       case EQUAL: return lhs == rhs;
       case NOT_EQUAL: return lhs != rhs;
-      case BIGGER: return lhs > rhs;
+      case GREATER: return lhs > rhs;
       case LESS: return lhs < rhs;
-      case EQUAL_OR_BIGGER: return lhs >= rhs;
-      case EQUAL_OR_LESS: return lhs <= rhs;
+      case GREATER_OR_EQUAL: return lhs >= rhs;
+      case LESS_OR_EQUAL: return lhs <= rhs;
       default: return 0;
     }
   }
