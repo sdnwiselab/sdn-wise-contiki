@@ -1,0 +1,40 @@
+<?xml version="1.0"?>
+
+<project name="SDN-WISE COOJA support" default="jar" basedir=".">
+  <property name="src" location="src"/>
+  <property name="build" location="build"/>
+  <property name="lib" location="lib"/>
+  <property name="cooja" location="../contiki/tools/cooja/"/>
+  
+  <property name="cooja_jar" value="${cooja}/dist/cooja.jar"/>
+  <property name="sdn-wise-data_jar" value="${lib}/sdn-wise-data.jar"/>
+  <property name="sdn-wise-cooja_jar" value="${lib}/sdn-wise-cooja.jar"/>
+
+  <target name="init">
+    <tstamp/>
+    <mkdir dir="${build}"/>
+  </target>
+
+  <target name="clean">
+    <delete dir="${build}"/>
+  </target>
+
+  <target name="compile" depends="init">
+    <javac srcdir="${src}" destdir="${build}" debug="on"
+           includeantruntime="false">
+      <classpath>
+        <pathelement location="${sdn-wise-data_jar}"/>
+	      <pathelement location="${cooja_jar}"/>
+      </classpath>
+    </javac>
+  </target>
+
+  <target name="jar" depends="init, compile">
+    <jar destfile="${sdn-wise-cooja_jar}" basedir="${build}">
+      <manifest>
+        <attribute name="Class-Path" value="."/>
+      </manifest>
+    </jar>
+  </target>
+
+</project>
