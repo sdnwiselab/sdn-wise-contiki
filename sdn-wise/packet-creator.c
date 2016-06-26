@@ -92,6 +92,27 @@ create_report(void)
   return p;
 }
 /*----------------------------------------------------------------------------*/
+packet_t* 
+create_reg_proxy(void)
+{  
+  uint8_t payload[] = {
+    48, 48, 48, 48, 48, 48, 48, 49,
+     0,  1,  2,  3,  4,  5,  0,  0,
+     0,  0,  0,  0,  0,  1,-64,-88,
+     1, 108, 39, 6
+  }; 
+
+  packet_t* p = create_packet_payload(
+    conf.my_net, 
+    &conf.sink_address, 
+    &conf.my_address, 
+    REG_PROXY, 
+    &conf.nxh_vs_sink,
+    payload, 
+    28);
+  return p;
+}
+/*----------------------------------------------------------------------------*/
 void
 create_and_send_request(packet_t* p)
 {

@@ -128,7 +128,7 @@
     }
   }
 /*----------------------------------------------------------------------------*/
-  static int
+  int
   uart_rx_callback(unsigned char c)
   {
     // TODO works with cooja, will not work with real nodes, cause -> syn
@@ -171,6 +171,10 @@
     address_list_init();
     leds_init();
 
+#if SINK
+    print_packet_uart(create_reg_proxy());
+#endif    
+
     while(1) {
       PROCESS_WAIT_EVENT();
       switch(ev) {
@@ -180,7 +184,7 @@
       // test_neighbor_table();
       // test_packet_buffer();
       // test_address_list();
-      // print_node_conf();
+      //  print_node_conf();
         break;
 
         case UART_RECEIVE_EVENT:

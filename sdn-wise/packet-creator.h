@@ -37,10 +37,11 @@
 
 #include "packet-buffer.h"
 
-/* Address API. */
+/* packets API. */
   packet_t* create_beacon(void);
   packet_t* create_data(void);
   packet_t* create_report(void);
+  packet_t* create_reg_proxy(void);
   void create_and_send_request(packet_t*);
   packet_t* create_config(void);
 #endif /* PACKET_CREATOR_H_ */

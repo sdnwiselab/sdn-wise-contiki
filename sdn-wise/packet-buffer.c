@@ -61,6 +61,7 @@
     }
 #if !COOJA
     putchar(126);
+    putchar('\n');
 #endif
     packet_deallocate(p);
   }

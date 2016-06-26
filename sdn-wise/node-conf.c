@@ -33,7 +33,7 @@
 #include "node-conf.h" 
 #include "net/rime/rime.h"
 
-#define _MY_ADDRESS 10
+#define _MY_ADDRESS 1
 #define _NET  1
 #define _BEACON_PERIOD  5
 #define _REPORT_PERIOD  10

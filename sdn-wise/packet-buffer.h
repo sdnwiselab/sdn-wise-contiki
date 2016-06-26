@@ -53,7 +53,8 @@
     REQUEST,
     RESPONSE,
     OPEN_PATH,
-    CONFIG
+    CONFIG,
+    REG_PROXY
   } packet_type_t;
 
   typedef struct __attribute__((__packed__)) packet_info {

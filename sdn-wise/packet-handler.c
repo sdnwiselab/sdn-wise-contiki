@@ -168,7 +168,8 @@ const void* conf_ptr[RULE_TTL+1] =
   handle_data(packet_t* p)
   {
     if (is_my_address(&(p->header.dst)))
-    {      
+    {     
+      PRINTF("[PHD]: Consuming Packet\n");
       packet_deallocate(p);
     } else {
       match_packet(p);

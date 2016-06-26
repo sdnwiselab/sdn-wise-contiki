@@ -516,7 +516,9 @@
   void 
   match_packet(packet_t* p){
     entry_t *e;
-    int found;
+    int found = 0;
+    PRINTF("[FLT]: Matching Packet...\n");
+
     for(e = list_head(flowtable); e != NULL; e = e->next) {
       found = match_entry(p,e);
       if (found){
