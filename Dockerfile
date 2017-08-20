@@ -1,11 +1,8 @@
 FROM multiarch/ubuntu-core:i386-xenial
 MAINTAINER Sebastiano Milardo <s.milardo at hotmail.it>
 
-ARG SDN_WISE_CONTIKI_REPO=https://github.com/sdnwiselab/sdn-wise-contiki.git
-ARG SDN_WISE_JAVA_REPO=https://github.com/sdnwiselab/sdn-wise-java.git
-
 ENV JAVA_TOOL_OPTIONS -Dfile.encoding=UTF8
-ENV JAVA_HOME /usr/lib/jvm/java-8-openjdk-i386
+ENV JAVA_HOME /usr/lib/jvm/java-8-openjdk-i386 
 
 # Update and install minimal
 RUN apt-get update \
@@ -49,11 +46,8 @@ RUN apt-get update \
 
 RUN useradd -ms /bin/bash cooja
 USER cooja 
-WORKDIR /home/cooja
-
-# Clone and install
-RUN git clone --recursive $SDN_WISE_CONTIKI_REPO \
-    && git clone --recursive $SDN_WISE_JAVA_REPO
+ADD . /home/cooja/sdn-wise-contiki
+WORKDIR /home/cooja/sdn-wise-contiki
 
 LABEL org.label-schema.name="SDN-WISE" \
       org.label-schema.description="The stateful Software Defined Networking solution for the Internet of Things" \
