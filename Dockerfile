@@ -4,6 +4,12 @@ MAINTAINER Sebastiano Milardo <s.milardo at hotmail.it>
 ENV JAVA_TOOL_OPTIONS -Dfile.encoding=UTF8
 ENV JAVA_HOME /usr/lib/jvm/java-8-openjdk-i386 
 
+# On MAC OSX:
+# open -a XQuartz
+# ip=$(ifconfig en0 | grep inet | awk '$1=="inet" {print $2}')
+# xhost + $ip
+# docker run -it -v $(pwd):/src/sdn-wise-contiki -e DISPLAY=$ip:0 -v /tmp/.X11-unix:/tmp/.X11-unix sdn-wise-contiki
+
 # Update and install minimal
 RUN apt-get update \
     && apt-get install \ 
@@ -44,15 +50,10 @@ RUN apt-get update \
     && apt-get clean \
     && rm -rf /var/lib/apt/lists/*
 
-RUN useradd -ms /bin/bash cooja
-USER cooja 
-ADD . /home/cooja/sdn-wise-contiki
-WORKDIR /home/cooja/sdn-wise-contiki
-
 LABEL org.label-schema.name="SDN-WISE" \
       org.label-schema.description="The stateful Software Defined Networking solution for the Internet of Things" \
       org.label-schema.url="http://sdn-wise.dieei.unict.it/" \
       org.label-schema.schema-version="1.0"
 
-WORKDIR /home/cooja/sdn-wise-contiki/contiki/tools/cooja
-RUN ant jar
+WORKDIR /src/sdn-wise-contiki/contiki/tools/cooja
+CMD ["ant", "run"]
