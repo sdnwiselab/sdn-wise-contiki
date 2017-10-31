@@ -43,7 +43,7 @@
     DROP,
     ASK,
     FUNCTION,
-    SET,
+    SET_,
     MATCH
   } action_type_t;
 

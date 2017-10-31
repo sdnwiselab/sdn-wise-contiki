@@ -36,8 +36,7 @@
 #include "address.h"
 #include "node-conf.h"
 
-#define DEBUG 1
-#if DEBUG && (!SINK || DEBUG_SINK)
+#if DEBUG
 #define PRINTF(...) printf(__VA_ARGS__)
 #else
 #define PRINTF(...)

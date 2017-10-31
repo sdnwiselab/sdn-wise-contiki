@@ -12,7 +12,6 @@
 #define CFS_ENABLED   0
 #define ELF_ENABLED   0
 #define BATTERY_ENABLED 0
-#define DEBUG_SINK    0
 /*************************************************************************/
 #endif // PROJECT_CONF_H_
 

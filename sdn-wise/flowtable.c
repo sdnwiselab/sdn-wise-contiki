@@ -73,8 +73,7 @@
 
 #define GET_BITS(b,s,n) (((b) >> (s)) & ((1 << (n)) - 1))
 
-#define DEBUG 1
-#if DEBUG && (!SINK || DEBUG_SINK)
+#if DEBUG
 #include <stdio.h>
 #define PRINTF(...) printf(__VA_ARGS__)
 #else
@@ -199,7 +198,7 @@
       case DROP: PRINTF("DROP"); break;
       case ASK: PRINTF("ASK"); break;
       case FUNCTION: PRINTF("FUNCTION "); break;
-      case SET: PRINTF("SET "); break;
+      case SET_: PRINTF("SET_ "); break;
       case MATCH: PRINTF("MATCH"); break;
     }
 
@@ -682,7 +681,7 @@
       // TODO function
       break;
       
-      case SET:
+      case SET_:
       set_action(p, s, action_array);
       break;    
 

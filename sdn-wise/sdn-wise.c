@@ -48,6 +48,15 @@
 #include "neighbor-table.h"
 #include "node-conf.h"
 
+
+#ifdef X_NUCLEO_IKS01A1
+#include "dev/temperature-sensor.h"
+#include "dev/humidity-sensor.h"
+#include "dev/pressure-sensor.h"
+#include "dev/sensor-common.h"
+#define NO_OF_SENSORS 3
+#endif /*X_NUCLEO_IKS01A1*/
+
 #define UART_BUFFER_SIZE      MAX_PACKET_LENGTH
 
 #define UNICAST_CONNECTION_NUMBER     29
@@ -64,8 +73,7 @@
 #define NEW_PACKET_EVENT  58
 #define ACTIVATE_EVENT    59
 
-#define DEBUG 1
-#if DEBUG && (!SINK || DEBUG_SINK)
+#if DEBUG
 #include <stdio.h>
 #define PRINTF(...) printf(__VA_ARGS__)
 #else
@@ -159,9 +167,15 @@
   static struct broadcast_conn bc;
 /*----------------------------------------------------------------------------*/
   PROCESS_THREAD(main_proc, ev, data) {
+ 
+#ifdef X_NUCLEO_IKS01A1   
+    uint8_t sensor_values[sizeof(int)*NO_OF_SENSORS];
+    int* sensor_values_ptr = &sensor_values;
+#endif
+
     PROCESS_BEGIN();
     
-    uart1_init(BAUD2UBR(115200));       /* set the baud rate as necessary */
+    //uart1_init(BAUD2UBR(115200));       /* set the baud rate as necessary */
     uart1_set_input(uart_rx_callback);  /* set the callback function */
 
     node_conf_init();
@@ -171,6 +185,12 @@
     address_list_init();
     leds_init();
 
+#ifdef X_NUCLEO_IKS01A1
+    SENSORS_ACTIVATE(temperature_sensor);
+    SENSORS_ACTIVATE(humidity_sensor);
+    SENSORS_ACTIVATE(pressure_sensor);
+#endif
+
 #if SINK
     print_packet_uart(create_reg_proxy());
 #endif    
@@ -179,12 +199,24 @@
       PROCESS_WAIT_EVENT();
       switch(ev) {
         case TIMER_EVENT:
+	
+	#ifdef X_NUCLEO_IKS01A1
+    		sensor_values_ptr[1] = temperature_sensor.value(0);
+    		sensor_values_ptr[2] = humidity_sensor.value(0);
+    		sensor_values_ptr[3] = pressure_sensor.value(0);
+    		rf_unicast_send(create_data(&sensor_values, sizeof(int)*NO_OF_SENSORS));	
+	#endif /*X_NUCLEO_IKS01A1*/
+
+
       // test_handle_open_path();
       // test_flowtable();
       // test_neighbor_table();
       // test_packet_buffer();
       // test_address_list();
-      //  print_node_conf();
+#if !SINK
+        print_node_conf();
+#endif
+
         break;
 
         case UART_RECEIVE_EVENT:
