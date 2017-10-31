@@ -33,7 +33,6 @@
 #include "node-conf.h" 
 #include "net/rime/rime.h"
 
-#define _MY_ADDRESS 1
 #define _NET  1
 #define _BEACON_PERIOD  5
 #define _REPORT_PERIOD  10
@@ -41,8 +40,7 @@
 #define _RSSI_MIN 0
 #define _PACKET_TTL  100;
 
-#define DEBUG 1
-#if DEBUG && (!SINK || DEBUG_SINK)
+#if DEBUG 
 #include <stdio.h>
 #define PRINTF(...) printf(__VA_ARGS__)
 #else
@@ -60,6 +58,8 @@
     conf.my_address.u8[0] = linkaddr_node_addr.u8[1];
 #else
     conf.my_address = get_address_from_int(_MY_ADDRESS);
+    linkaddr_node_addr.u8[0] = conf.my_address.u8[1]; 
+    linkaddr_node_addr.u8[1] = conf.my_address.u8[0];	
 #endif
     conf.requests_count = 0;
     conf.my_net = _NET;

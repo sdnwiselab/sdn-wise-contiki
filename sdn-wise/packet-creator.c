@@ -36,8 +36,7 @@
 #include "neighbor-table.h"
 #include "sdn-wise.h"
 
-#define DEBUG 1
-#if DEBUG && (!SINK || DEBUG_SINK)
+#if DEBUG
 #define PRINTF(...) printf(__VA_ARGS__)
 #else
 #define PRINTF(...)
@@ -56,18 +55,29 @@ create_beacon(void)
   
     set_payload_at(p, BEACON_HOPS_INDEX, conf.hops_from_sink);
     
+#if COOJA           
     SENSORS_ACTIVATE(battery_sensor);
     set_payload_at(p, BEACON_BATT_INDEX, battery_sensor.value(0));
     SENSORS_DEACTIVATE(battery_sensor);
+#else
+    set_payload_at(p, BEACON_BATT_INDEX, 0xff);
+#endif
   }
   return p;
 }
 /*----------------------------------------------------------------------------*/
 packet_t* 
-create_data(void)
+create_data(uint8_t* payload, uint8_t len)
 {
-  // TODO 
-  return NULL;
+  packet_t* p = create_packet_payload(
+    conf.my_net, 
+    &conf.sink_address, 
+    &conf.my_address, 
+    DATA, 
+    &conf.nxh_vs_sink,
+    payload, 
+    len);
+  return p;
 }
 /*----------------------------------------------------------------------------*/
 packet_t* 
@@ -82,10 +92,14 @@ create_report(void)
     p->header.nxh = conf.nxh_vs_sink;
     
     set_payload_at(p, BEACON_HOPS_INDEX, conf.hops_from_sink);
-                
+     
+#if COOJA           
     SENSORS_ACTIVATE(battery_sensor);
     set_payload_at(p, BEACON_BATT_INDEX, battery_sensor.value(0));
     SENSORS_DEACTIVATE(battery_sensor);
+#else
+    set_payload_at(p, BEACON_BATT_INDEX, 0xff);
+#endif
 
     fill_payload_with_neighbors(p);
   }

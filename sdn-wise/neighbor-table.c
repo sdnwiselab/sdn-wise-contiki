@@ -36,8 +36,8 @@
 #include "neighbor-table.h"
 #include "packet-creator.h"
 
-#define DEBUG 1
-#if DEBUG && !SINK
+
+#if DEBUG
 #include <stdio.h>
 #define PRINTF(...) printf(__VA_ARGS__)
 #else

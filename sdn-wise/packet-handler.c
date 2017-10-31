@@ -87,8 +87,7 @@ const void* conf_ptr[RULE_TTL+1] =
 #define CNF_READ 0
 #define CNF_WRITE 1
 
-#define DEBUG 1
-#if DEBUG && (!SINK || DEBUG_SINK)
+#if DEBUG
 #define PRINTF(...) printf(__VA_ARGS__)
 #else
 #define PRINTF(...)
@@ -168,8 +167,11 @@ const void* conf_ptr[RULE_TTL+1] =
   handle_data(packet_t* p)
   {
     if (is_my_address(&(p->header.dst)))
-    {     
-      PRINTF("[PHD]: Consuming Packet\n");
+    {  
+      PRINTF("[PHD]: Consuming Packet\n"); 
+#if SINK
+      print_packet_uart(p);
+#endif 
       packet_deallocate(p);
     } else {
       match_packet(p);

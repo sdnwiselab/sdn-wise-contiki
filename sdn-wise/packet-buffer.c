@@ -37,8 +37,7 @@
 
 #define MAX_TTL   100
 
-#define DEBUG 1
-#if DEBUG && (!SINK || DEBUG_SINK)
+#if DEBUG
 #define PRINTF(...) printf(__VA_ARGS__)
 #else
 #define PRINTF(...)
