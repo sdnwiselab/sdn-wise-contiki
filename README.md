@@ -23,8 +23,8 @@ This project uses [semantic versioning](http://semver.org).
 
 Our approach is detailed in three scientific contributions:
 ```
-@inproceedings{Galluccio:2015,
-  author = {Paolo {Di Dio}  and Salvatore Faraci and Laura Galluccio and Sebastiano Milardo and Giacomo Morabito and Sergio Palazzo and Patrizia Livreri},
+@inproceedings{DiDio:2016,
+  author    = {Paolo {Di Dio}  and Salvatore Faraci and Laura Galluccio and Sebastiano Milardo and Giacomo Morabito and Sergio Palazzo and Patrizia Livreri},
   booktitle = {2016 Mediterranean Ad Hoc Networking Workshop (Med-Hoc-Net)},
   doi       = {10.1109/MedHocNet.2016.7528421},
   title     = {{Exploiting state information to support QoS in Software-Defined WSNs}},
@@ -34,7 +34,7 @@ Our approach is detailed in three scientific contributions:
 ```
 
 ```
-@inproceedings{Galluccio:2015,
+@inproceedings{Galluccio:2015b,
   author    = {Laura Galluccio and Sebastiano Milardo and Giacomo Morabito and Sergio Palazzo},
   booktitle = {2015 IEEE Conference on Computer Communications Workshops (INFOCOM WKSHPS)},
   doi       = {10.1109/INFCOMW.2015.7179322},
@@ -45,7 +45,7 @@ Our approach is detailed in three scientific contributions:
 ```
 
 ```
-@inproceedings{Galluccio:2015,
+@inproceedings{Galluccio:2015a,
   author    = {Laura Galluccio and Sebastiano Milardo and Giacomo Morabito and Sergio Palazzo},
   booktitle = {2015 IEEE Conference on Computer Communications (INFOCOM)},
   doi       = {10.1109/INFOCOM.2015.7218418},
