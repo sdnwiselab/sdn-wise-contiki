@@ -24,7 +24,7 @@ This project uses [semantic versioning](http://semver.org).
 Our approach is detailed in three scientific contributions:
 ```
 @inproceedings{DiDio:2016,
-  author    = {Paolo {Di Dio}  and Salvatore Faraci and Laura Galluccio and Sebastiano Milardo and Giacomo Morabito and Sergio Palazzo and Patrizia Livreri},
+  author    = {Paolo {Di Dio} and Salvatore Faraci and Laura Galluccio and Sebastiano Milardo and Giacomo Morabito and Sergio Palazzo and Patrizia Livreri},
   booktitle = {2016 Mediterranean Ad Hoc Networking Workshop (Med-Hoc-Net)},
   doi       = {10.1109/MedHocNet.2016.7528421},
   title     = {{Exploiting state information to support QoS in Software-Defined WSNs}},
