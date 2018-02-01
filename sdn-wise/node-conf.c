@@ -33,14 +33,7 @@
 #include "node-conf.h" 
 #include "net/rime/rime.h"
 
-#define _NET  1
-#define _BEACON_PERIOD  5
-#define _REPORT_PERIOD  10
-#define _RULE_TTL  100
-#define _RSSI_MIN 0
-#define _PACKET_TTL  100;
-
-#if DEBUG 
+#if SDN_WISE_DEBUG 
 #include <stdio.h>
 #define PRINTF(...) printf(__VA_ARGS__)
 #else
@@ -80,6 +73,7 @@
     set_broadcast_address(&(conf.sink_address));
     conf.hops_from_sink = _PACKET_TTL;
     conf.rssi_from_sink = 0;
+    conf.reset_period = _RESET_PERIOD;
 #endif 
   }
 /*----------------------------------------------------------------------------*/

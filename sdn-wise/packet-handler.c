@@ -48,6 +48,7 @@ typedef enum conf_id{
   RSSI_MIN,
   BEACON_PERIOD,
   REPORT_PERIOD,
+  RESET_PERIOD,
   RULE_TTL,
   ADD_ALIAS,
   REM_ALIAS,  
@@ -87,7 +88,7 @@ const void* conf_ptr[RULE_TTL+1] =
 #define CNF_READ 0
 #define CNF_WRITE 1
 
-#if DEBUG
+#if SDN_WISE_DEBUG
 #define PRINTF(...) printf(__VA_ARGS__)
 #else
 #define PRINTF(...)
@@ -374,6 +375,7 @@ const void* conf_ptr[RULE_TTL+1] =
           case RSSI_MIN:
           case BEACON_PERIOD:
           case REPORT_PERIOD:
+          case RESET_PERIOD:
           case RULE_TTL:
           if (conf_size[id] == 1){
             memcpy((uint8_t*)conf_ptr[id], &(p->payload[i+1]), conf_size[id]);

@@ -73,7 +73,7 @@
 #define NEW_PACKET_EVENT  58
 #define ACTIVATE_EVENT    59
 
-#if DEBUG
+#if SDN_WISE_DEBUG
 #include <stdio.h>
 #define PRINTF(...) printf(__VA_ARGS__)
 #else
@@ -113,13 +113,24 @@
     process_post(&rf_b_send_proc, RF_B_SEND_EVENT, (process_data_t)p);
   }
 /*----------------------------------------------------------------------------*/
+  static uint8_t
+  get_packet_rssi(uint16_t raw_value)
+  {
+    // TODO the exact rssi value depends on the radio
+    // http://sourceforge.net/p/contiki/mailman/message/31805752/
+#if COOJA 
+    return (uint8_t) 100 + raw_value;
+#else
+    return (uint8_t) raw_value;
+#endif
+  }
+/*----------------------------------------------------------------------------*/
   static void
   unicast_rx_callback(struct unicast_conn *c, const linkaddr_t *from)
   {
     packet_t* p = get_packet_from_array((uint8_t *)packetbuf_dataptr());
     if (p != NULL){
-      // TODO the exact rssi value depends on the radio (search for a formula)
-      p->info.rssi = (uint8_t) (- packetbuf_attr(PACKETBUF_ATTR_RSSI));
+      p->info.rssi = get_packet_rssi(packetbuf_attr(PACKETBUF_ATTR_RSSI));
       process_post(&main_proc, RF_U_RECEIVE_EVENT, (process_data_t)p);
     }
   }
@@ -129,9 +140,7 @@
   {
     packet_t* p = get_packet_from_array((uint8_t *)packetbuf_dataptr());
     if (p != NULL){
-      // TODO the exact rssi value depends on the radio (search for a formula)
-      // http://sourceforge.net/p/contiki/mailman/message/31805752/
-      p->info.rssi = (uint8_t) (- packetbuf_attr(PACKETBUF_ATTR_RSSI));
+      p->info.rssi = get_packet_rssi(packetbuf_attr(PACKETBUF_ATTR_RSSI));
       process_post(&main_proc, RF_B_RECEIVE_EVENT, (process_data_t)p);
     }
   }
@@ -139,7 +148,6 @@
   int
   uart_rx_callback(unsigned char c)
   {
-    // TODO works with cooja, will not work with real nodes, cause -> syn
     uart_buffer[uart_buffer_index] = c;
     if (uart_buffer_index == LEN_INDEX){
       uart_buffer_expected = c;
@@ -243,6 +251,15 @@
         case RF_SEND_REPORT_EVENT:
         leds_toggle(LEDS_RED);
         rf_unicast_send(create_report());
+#if !SINK  
+        if (conf.reset_period == 0){      
+          conf.hops_from_sink = _PACKET_TTL;
+          conf.rssi_from_sink = 0;
+          conf.reset_period = _RESET_PERIOD;
+        } else {
+          conf.reset_period--;
+        }
+#endif
         break;
       } 
     }
