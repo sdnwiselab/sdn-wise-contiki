@@ -37,7 +37,7 @@
 
 #define MAX_TTL   100
 
-#if DEBUG
+#if SDN_WISE_DEBUG
 #define PRINTF(...) printf(__VA_ARGS__)
 #else
 #define PRINTF(...)
@@ -51,17 +51,13 @@
   print_packet_uart(packet_t* p)
   {
     uint16_t i = 0;
-#if !COOJA
     putchar(122);
-#endif
     uint8_t* tmp = (uint8_t*)p;
     for (i = 0; i< p->header.len; ++i){
       putchar(tmp[i]);
     }
-#if !COOJA
     putchar(126);
     putchar('\n');
-#endif
     packet_deallocate(p);
   }
 /*----------------------------------------------------------------------------*/
@@ -117,12 +113,12 @@
   packet_t* 
   get_packet_from_array(uint8_t* array)
   {
-  // TODO fragmentation
-    address_t dst = get_address_from_array(&array[DST_INDEX]);
-    address_t src = get_address_from_array(&array[SRC_INDEX]);
-    address_t nxh = get_address_from_array(&array[NXH_INDEX]);
-    packet_t* p = create_packet_payload(array[NET_INDEX], &dst, &src, 
-      array[TYP_INDEX], &nxh, &array[PLD_INDEX], array[LEN_INDEX] - PLD_INDEX);
+    // TODO fragmentation
+    // This works if the compiler complies with __attribute__((__packed__)) 
+    packet_t* p = packet_allocate();
+    if (p != NULL){
+      memcpy((uint8_t*)p, array, array[LEN_INDEX]);
+    }
     return p;
   }
 /*----------------------------------------------------------------------------*/
