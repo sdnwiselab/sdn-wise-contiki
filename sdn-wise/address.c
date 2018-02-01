@@ -36,7 +36,7 @@
 #include "address.h"
 #include "node-conf.h"
 
-#if DEBUG
+#if SDN_WISE_DEBUG
 #define PRINTF(...) printf(__VA_ARGS__)
 #else
 #define PRINTF(...)

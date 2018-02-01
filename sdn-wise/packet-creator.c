@@ -36,7 +36,7 @@
 #include "neighbor-table.h"
 #include "sdn-wise.h"
 
-#if DEBUG
+#if SDN_WISE_DEBUG
 #define PRINTF(...) printf(__VA_ARGS__)
 #else
 #define PRINTF(...)

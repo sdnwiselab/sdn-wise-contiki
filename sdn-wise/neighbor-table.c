@@ -37,7 +37,7 @@
 #include "packet-creator.h"
 
 
-#if DEBUG
+#if SDN_WISE_DEBUG
 #include <stdio.h>
 #define PRINTF(...) printf(__VA_ARGS__)
 #else

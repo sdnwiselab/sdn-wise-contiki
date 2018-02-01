@@ -73,7 +73,7 @@
 
 #define GET_BITS(b,s,n) (((b) >> (s)) & ((1 << (n)) - 1))
 
-#if DEBUG
+#if SDN_WISE_DEBUG
 #include <stdio.h>
 #define PRINTF(...) printf(__VA_ARGS__)
 #else
