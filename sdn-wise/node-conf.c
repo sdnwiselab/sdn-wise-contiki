@@ -33,7 +33,10 @@
 #include "node-conf.h" 
 #include "net/rime/rime.h"
 
-#if SDN_WISE_DEBUG 
+#ifndef SDN_WISE_DEBUG
+#define SDN_WISE_DEBUG 0
+#endif
+#if SDN_WISE_DEBUG
 #include <stdio.h>
 #define PRINTF(...) printf(__VA_ARGS__)
 #else
@@ -42,7 +45,7 @@
 /*----------------------------------------------------------------------------*/
   node_conf_t conf;
 /*----------------------------------------------------------------------------*/
-  void 
+  void
   node_conf_init(void)
   {
 
@@ -51,8 +54,8 @@
     conf.my_address.u8[0] = linkaddr_node_addr.u8[1];
 #else
     conf.my_address = get_address_from_int(_MY_ADDRESS);
+    linkaddr_node_addr.u8[1] = conf.my_address.u8[0];
     linkaddr_node_addr.u8[0] = conf.my_address.u8[1]; 
-    linkaddr_node_addr.u8[1] = conf.my_address.u8[0];	
 #endif
     conf.requests_count = 0;
     conf.my_net = _NET;
@@ -64,15 +67,15 @@
 #if SINK
     conf.is_active = 1;
     conf.nxh_vs_sink = conf.my_address;
-    conf.sink_address = conf.my_address;;
+    conf.sink_address = conf.my_address;
+    conf.distance_from_sink = _MIN_DISTANCE;
     conf.hops_from_sink = 0;
-    conf.rssi_from_sink = 255;
 #else
     conf.is_active = 0;
     set_broadcast_address(&(conf.nxh_vs_sink));
     set_broadcast_address(&(conf.sink_address));
+    conf.distance_from_sink = _MAX_DISTANCE;
     conf.hops_from_sink = _PACKET_TTL;
-    conf.rssi_from_sink = 0;
     conf.reset_period = _RESET_PERIOD;
 #endif 
   }
@@ -88,7 +91,7 @@
       conf.my_net, conf.beacon_period, conf.report_period, 
       conf.rule_ttl, conf.rssi_min, conf.packet_ttl);
     print_address(&(conf.nxh_vs_sink));
-    PRINTF(" (hops: %d, rssi: %d)\n", conf.hops_from_sink, conf.rssi_from_sink);
+    PRINTF(" (hops: %d, distance: %d)\n", conf.hops_from_sink, conf.distance_from_sink);
     PRINTF("[CFG]: - Sink: ");
     print_address(&(conf.sink_address));
     PRINTF("\n");

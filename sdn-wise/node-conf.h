@@ -33,13 +33,16 @@
 #include <stdint.h>
 #include "address.h"
 
-#define _NET              1
+#define _NET  1
 #define _BEACON_PERIOD    5
 #define _REPORT_PERIOD    10
-#define _RESET_PERIOD     10
+#define _RESET_PERIOD     100
 #define _RULE_TTL         100
 #define _RSSI_MIN         0
+#define _RSSI_MAX         255
 #define _PACKET_TTL       100
+#define _MAX_DISTANCE     _RSSI_MAX
+#define _MIN_DISTANCE     0
 
   typedef struct node_conf_struct {
     uint8_t my_net;
@@ -51,8 +54,8 @@
     uint16_t reset_period;
     uint16_t rule_ttl; 
     address_t nxh_vs_sink;
+    uint16_t distance_from_sink;
     uint8_t hops_from_sink;
-    uint8_t rssi_from_sink;  
     address_t sink_address;
     uint8_t is_active;
     uint8_t requests_count;

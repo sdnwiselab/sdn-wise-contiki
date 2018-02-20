@@ -48,37 +48,33 @@
 #include "neighbor-table.h"
 #include "node-conf.h"
 
-
-#ifdef X_NUCLEO_IKS01A1
-#include "dev/temperature-sensor.h"
-#include "dev/humidity-sensor.h"
-#include "dev/pressure-sensor.h"
-#include "dev/sensor-common.h"
-#define NO_OF_SENSORS 3
-#endif /*X_NUCLEO_IKS01A1*/
-
 #define UART_BUFFER_SIZE      MAX_PACKET_LENGTH
 
 #define UNICAST_CONNECTION_NUMBER     29
 #define BROADCAST_CONNECTION_NUMBER       30
 
-#define TIMER_EVENT       50
-#define RF_U_SEND_EVENT     51
-#define RF_B_SEND_EVENT     52
+#define TIMER_EVENT           50
+#define RF_U_SEND_EVENT       51
+#define RF_B_SEND_EVENT       52
 #define RF_U_RECEIVE_EVENT    53
 #define RF_B_RECEIVE_EVENT    54
-#define UART_RECEIVE_EVENT      55
+#define UART_RECEIVE_EVENT    55
 #define RF_SEND_BEACON_EVENT  56
 #define RF_SEND_REPORT_EVENT  57
-#define NEW_PACKET_EVENT  58
-#define ACTIVATE_EVENT    59
+#define RF_SEND_DATA_EVENT    58
+#define NEW_PACKET_EVENT      59
+#define ACTIVATE_EVENT        60
 
+#ifndef SDN_WISE_DEBUG
+#define SDN_WISE_DEBUG 0
+#endif
 #if SDN_WISE_DEBUG
 #include <stdio.h>
 #define PRINTF(...) printf(__VA_ARGS__)
 #else
 #define PRINTF(...)
 #endif
+
 /*----------------------------------------------------------------------------*/
   PROCESS(main_proc, "Main Process");
   PROCESS(rf_u_send_proc, "RF Unicast Send Process");
@@ -87,6 +83,7 @@
   PROCESS(timer_proc, "Timer Process");
   PROCESS(beacon_timer_proc, "Beacon Timer Process");
   PROCESS(report_timer_proc, "Report Timer Process");
+  PROCESS(data_timer_proc, "Data Timer Process");
   AUTOSTART_PROCESSES(
     &main_proc,
     &rf_u_send_proc,
@@ -94,12 +91,15 @@
     &timer_proc,
     &beacon_timer_proc,
     &report_timer_proc,
-    &packet_handler_proc
+    &packet_handler_proc,
+    &data_timer_proc
     );
 /*----------------------------------------------------------------------------*/
   static uint8_t uart_buffer[UART_BUFFER_SIZE];
   static uint8_t uart_buffer_index = 0;
-  static uint8_t uart_buffer_expected = 0; 
+  static uint8_t uart_buffer_expected = 0;
+  static uint8_t count=0;
+  static packet_t* p;
 /*----------------------------------------------------------------------------*/
   void
   rf_unicast_send(packet_t* p)
@@ -112,18 +112,20 @@
   {
     process_post(&rf_b_send_proc, RF_B_SEND_EVENT, (process_data_t)p);
   }
+
 /*----------------------------------------------------------------------------*/
   static uint8_t
   get_packet_rssi(uint16_t raw_value)
   {
     // TODO the exact rssi value depends on the radio
     // http://sourceforge.net/p/contiki/mailman/message/31805752/
-#if COOJA 
-    return (uint8_t) 100 + raw_value;
+#if COOJA
+    return (uint8_t) -raw_value;
 #else
     return (uint8_t) raw_value;
 #endif
   }
+
 /*----------------------------------------------------------------------------*/
   static void
   unicast_rx_callback(struct unicast_conn *c, const linkaddr_t *from)
@@ -158,32 +160,26 @@
       uart_buffer_expected = 0;
       packet_t* p = get_packet_from_array(uart_buffer);
       if (p != NULL){
-        p->info.rssi = 255;
+        p->info.rssi = 0;
         process_post(&main_proc, UART_RECEIVE_EVENT, (process_data_t)p);  
       }
     }
     return 0;
   }
 /*----------------------------------------------------------------------------*/
-  static const struct unicast_callbacks unicast_callbacks = { 
-    unicast_rx_callback 
+ static const struct unicast_callbacks unicast_callbacks = {
+    unicast_rx_callback
   };
   static struct unicast_conn uc;
-  static const struct broadcast_callbacks broadcast_callbacks = { 
-    broadcast_rx_callback 
+  static const struct broadcast_callbacks broadcast_callbacks = {
+    broadcast_rx_callback
   };
   static struct broadcast_conn bc;
 /*----------------------------------------------------------------------------*/
   PROCESS_THREAD(main_proc, ev, data) {
- 
-#ifdef X_NUCLEO_IKS01A1   
-    uint8_t sensor_values[sizeof(int)*NO_OF_SENSORS];
-    int* sensor_values_ptr = &sensor_values;
-#endif
-
     PROCESS_BEGIN();
     
-    //uart1_init(BAUD2UBR(115200));       /* set the baud rate as necessary */
+    uart1_init(BAUD2UBR(115200));       /* set the baud rate as necessary */
     uart1_set_input(uart_rx_callback);  /* set the callback function */
 
     node_conf_init();
@@ -193,12 +189,6 @@
     address_list_init();
     leds_init();
 
-#ifdef X_NUCLEO_IKS01A1
-    SENSORS_ACTIVATE(temperature_sensor);
-    SENSORS_ACTIVATE(humidity_sensor);
-    SENSORS_ACTIVATE(pressure_sensor);
-#endif
-
 #if SINK
     print_packet_uart(create_reg_proxy());
 #endif    
@@ -207,24 +197,13 @@
       PROCESS_WAIT_EVENT();
       switch(ev) {
         case TIMER_EVENT:
-	
-	#ifdef X_NUCLEO_IKS01A1
-    		sensor_values_ptr[1] = temperature_sensor.value(0);
-    		sensor_values_ptr[2] = humidity_sensor.value(0);
-    		sensor_values_ptr[3] = pressure_sensor.value(0);
-    		rf_unicast_send(create_data(&sensor_values, sizeof(int)*NO_OF_SENSORS));	
-	#endif /*X_NUCLEO_IKS01A1*/
-
-
       // test_handle_open_path();
       // test_flowtable();
       // test_neighbor_table();
       // test_packet_buffer();
       // test_address_list();
-#if !SINK
+        print_flowtable();
         print_node_conf();
-#endif
-
         break;
 
         case UART_RECEIVE_EVENT:
@@ -244,22 +223,31 @@
         break;
 
         case RF_SEND_BEACON_EVENT:
-        leds_toggle(LEDS_RED);
         rf_broadcast_send(create_beacon());
         break;
 
         case RF_SEND_REPORT_EVENT:
-        leds_toggle(LEDS_RED);
         rf_unicast_send(create_report());
-#if !SINK  
-        if (conf.reset_period == 0){      
-          conf.hops_from_sink = _PACKET_TTL;
-          conf.rssi_from_sink = 0;
-          conf.reset_period = _RESET_PERIOD;
-        } else {
-          conf.reset_period--;
-        }
-#endif
+        #if !SINK
+                if (conf.reset_period == 0){
+                  conf.distance_from_sink = _MAX_DISTANCE;
+                  conf.reset_period = _RESET_PERIOD;
+                } else {
+                  conf.reset_period--;
+                }
+        #endif
+        break;
+
+        case RF_SEND_DATA_EVENT:
+            #if MOBILE
+            if (conf.is_active){
+            p = create_data(count);
+                if (p != NULL){
+                    match_packet(p);
+                }
+            count++;
+               }
+       #endif
         break;
       } 
     }
@@ -267,9 +255,10 @@
   }
 /*----------------------------------------------------------------------------*/
   PROCESS_THREAD(rf_u_send_proc, ev, data) {
-    static linkaddr_t addr;
+  static linkaddr_t addr;
     PROCESS_EXITHANDLER(unicast_close(&uc);)
     PROCESS_BEGIN();
+
     unicast_open(&uc, UNICAST_CONNECTION_NUMBER, &unicast_callbacks);
     while(1) {
       PROCESS_WAIT_EVENT_UNTIL(ev == RF_U_SEND_EVENT);
@@ -291,6 +280,7 @@
             sent_size = LINKADDR_SIZE;
           } else {
             sent_size = ADDRESS_LENGTH;
+
           }
 
           for ( i=0; i<sent_size; ++i){
@@ -302,7 +292,7 @@
           uint8_t* a = (uint8_t*)p;
           packetbuf_copyfrom(a,p->header.len);
           unicast_send(&uc, &addr);
-        } 
+        }
 #if SINK
         else {
           print_packet_uart(p);
@@ -319,6 +309,7 @@
     PROCESS_BEGIN();
     broadcast_open(&bc, BROADCAST_CONNECTION_NUMBER, &broadcast_callbacks);
     while(1) {
+
       PROCESS_WAIT_EVENT_UNTIL(ev == RF_B_SEND_EVENT);
       packet_t* p = (packet_t*)data;
 
@@ -329,7 +320,7 @@
         PRINTF("\n");
         
         uint8_t* a = (uint8_t*)p;
-        packetbuf_copyfrom(a,p->header.len);  
+        packetbuf_copyfrom(a,p->header.len);
         broadcast_send(&bc);
         packet_deallocate(p);
       }
@@ -349,9 +340,9 @@
     PROCESS_END();
   }
 /*----------------------------------------------------------------------------*/
-  PROCESS_THREAD(beacon_timer_proc, ev, data) {
+PROCESS_THREAD(beacon_timer_proc, ev, data) {
     static struct etimer et;
-    
+
     PROCESS_BEGIN();
     while(1){
 #if !SINK
@@ -364,7 +355,7 @@
       process_post(&main_proc, RF_SEND_BEACON_EVENT, (process_data_t)NULL);
     }
     PROCESS_END();
-  }
+}
 /*----------------------------------------------------------------------------*/
   PROCESS_THREAD(report_timer_proc, ev, data) {
     static struct etimer et;
@@ -383,12 +374,24 @@
     PROCESS_END();
   }
 /*----------------------------------------------------------------------------*/
+  PROCESS_THREAD(data_timer_proc, ev, data) {
+    static struct etimer et;
+
+    PROCESS_BEGIN();
+    while(1){
+      etimer_set(&et, 5 * CLOCK_SECOND);
+      PROCESS_WAIT_EVENT_UNTIL(etimer_expired(&et));
+      process_post(&main_proc, RF_SEND_DATA_EVENT, (process_data_t)NULL);
+    }
+    PROCESS_END();
+  }
+
+/*----------------------------------------------------------------------------*/
   PROCESS_THREAD(packet_handler_proc, ev, data) {
     PROCESS_BEGIN();
     while(1) {
       PROCESS_WAIT_EVENT_UNTIL(ev == NEW_PACKET_EVENT);
       packet_t* p = (packet_t*)data;
-
       PRINTF("[RX ]: ");
       print_packet(p);
       PRINTF("\n");
@@ -397,4 +400,3 @@
     PROCESS_END();
   }
 /*----------------------------------------------------------------------------*/
-/** @} */

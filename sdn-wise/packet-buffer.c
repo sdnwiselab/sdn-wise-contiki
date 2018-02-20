@@ -37,6 +37,9 @@
 
 #define MAX_TTL   100
 
+#ifndef SDN_WISE_DEBUG
+#define SDN_WISE_DEBUG 0
+#endif
 #if SDN_WISE_DEBUG
 #define PRINTF(...) printf(__VA_ARGS__)
 #else
@@ -114,7 +117,7 @@
   get_packet_from_array(uint8_t* array)
   {
     // TODO fragmentation
-    // This works if the compiler complies with __attribute__((__packed__)) 
+    // This works if the compiler complies with __attribute__((__packed__))
     packet_t* p = packet_allocate();
     if (p != NULL){
       memcpy((uint8_t*)p, array, array[LEN_INDEX]);

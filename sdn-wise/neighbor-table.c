@@ -36,7 +36,9 @@
 #include "neighbor-table.h"
 #include "packet-creator.h"
 
-
+#ifndef SDN_WISE_DEBUG
+#define SDN_WISE_DEBUG 0
+#endif
 #if SDN_WISE_DEBUG
 #include <stdio.h>
 #define PRINTF(...) printf(__VA_ARGS__)

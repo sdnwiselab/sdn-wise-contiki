@@ -88,6 +88,9 @@ const void* conf_ptr[RULE_TTL+1] =
 #define CNF_READ 0
 #define CNF_WRITE 1
 
+#ifndef SDN_WISE_DEBUG
+#define SDN_WISE_DEBUG 0
+#endif
 #if SDN_WISE_DEBUG
 #define PRINTF(...) printf(__VA_ARGS__)
 #else
@@ -104,7 +107,6 @@ const void* conf_ptr[RULE_TTL+1] =
   void 
   handle_packet(packet_t* p)
   {
-    
     if (p->info.rssi >= conf.rssi_min && p->header.net == conf.my_net){
       if (p->header.typ == BEACON){
         PRINTF("[PHD]: Beacon\n");
@@ -148,17 +150,22 @@ const void* conf_ptr[RULE_TTL+1] =
   handle_beacon(packet_t* p)
   {
     add_neighbor(&(p->header.src),p->info.rssi);
-#if !SINK  
-  // TODO what if the network changes?
-    
+#if !SINK
     uint8_t new_hops = get_payload_at(p, BEACON_HOPS_INDEX);
-    if (new_hops <= conf.hops_from_sink-1 &&
-      p->info.rssi > conf.rssi_from_sink)
+    uint8_t new_distance = p->info.rssi;
+
+    if (address_cmp(&(conf.nxh_vs_sink), &(p->header.src)) ||
+#if MOBILE
+       (new_distance < conf.distance_from_sink)
+#else
+       (new_hops <= conf.hops_from_sink-1 && new_distance < conf.distance_from_sink)
+#endif
+    )
     {
       conf.nxh_vs_sink = p->header.src;
-      conf.hops_from_sink = new_hops+1;
-      conf.rssi_from_sink = p->info.rssi;  
+      conf.distance_from_sink = new_distance;
       conf.sink_address = p->header.nxh;
+      conf.hops_from_sink = new_hops+1;
     }
 #endif
     packet_deallocate(p);
@@ -168,11 +175,8 @@ const void* conf_ptr[RULE_TTL+1] =
   handle_data(packet_t* p)
   {
     if (is_my_address(&(p->header.dst)))
-    {  
-      PRINTF("[PHD]: Consuming Packet\n"); 
-#if SINK
-      print_packet_uart(p);
-#endif 
+    {     
+      PRINTF("[PHD]: Consuming Packet...\n");
       packet_deallocate(p);
     } else {
       match_packet(p);
@@ -211,8 +215,6 @@ const void* conf_ptr[RULE_TTL+1] =
   handle_open_path(packet_t* p)
   {
     int i;
-    
-    
     uint8_t n_windows = get_payload_at(p,OPEN_PATH_WINDOWS_INDEX);
     uint8_t start = n_windows*WINDOW_SIZE + 1;
     uint8_t path_len = (p->header.len - (start + PLD_INDEX))/ADDRESS_LENGTH;
@@ -255,11 +257,6 @@ const void* conf_ptr[RULE_TTL+1] =
 
       action_t* a = create_action(FORWARD_U, &(p->payload[prev]), ADDRESS_LENGTH); 
       add_action(e,a);
-
-      PRINTF("[PHD]: ");
-      print_entry(e);
-      PRINTF("\n");
-      
       add_entry(e);
     }
    
@@ -286,11 +283,6 @@ const void* conf_ptr[RULE_TTL+1] =
 
       action_t* a = create_action(FORWARD_U, &(p->payload[next]), ADDRESS_LENGTH);
       add_action(e,a);
-
-      PRINTF("[PHD]: ");
-      print_entry(e);
-      PRINTF("\n");
-      
       add_entry(e);
 
       address_t next_address = get_address_from_array(&(p->payload[next]));
@@ -345,6 +337,7 @@ const void* conf_ptr[RULE_TTL+1] =
             p->payload[i+2] = value & 0xFF; 
           }
           break;
+
 
           default:
           break;

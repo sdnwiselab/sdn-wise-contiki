@@ -73,6 +73,9 @@
 
 #define GET_BITS(b,s,n) (((b) >> (s)) & ((1 << (n)) - 1))
 
+#ifndef SDN_WISE_DEBUG
+#define SDN_WISE_DEBUG 0
+#endif
 #if SDN_WISE_DEBUG
 #include <stdio.h>
 #define PRINTF(...) printf(__VA_ARGS__)
@@ -198,7 +201,7 @@
       case DROP: PRINTF("DROP"); break;
       case ASK: PRINTF("ASK"); break;
       case FUNCTION: PRINTF("FUNCTION "); break;
-      case SET_: PRINTF("SET_ "); break;
+      case SET_: PRINTF("SET "); break;
       case MATCH: PRINTF("MATCH"); break;
     }
 
@@ -377,7 +380,6 @@
         return NULL;
       }
     }
-
     entry_init(e);
     return e;
   }
@@ -503,13 +505,10 @@
       }
     }
 
-    if (found == NULL){
-      list_add(flowtable,e);
-      PRINTF("[FLT]: Entry added\n");
-    } else {
-      /* TODO rewrite the actions*/ 
-      PRINTF("[FLT]: Entry already exists\n");
+    if (found != NULL){
+      entry_free(found);
     }
+    list_add(flowtable,e);
   }
 /*----------------------------------------------------------------------------*/
   void 
