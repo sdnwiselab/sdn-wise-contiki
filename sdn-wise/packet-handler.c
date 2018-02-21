@@ -69,7 +69,8 @@ const uint8_t conf_size[RULE_TTL+1] =
   sizeof(conf.packet_ttl),
   sizeof(conf.rssi_min),
   sizeof(conf.beacon_period),       
-  sizeof(conf.report_period),       
+  sizeof(conf.report_period),  
+  sizeof(conf.reset_period),       
   sizeof(conf.rule_ttl)
 };
 
@@ -81,7 +82,8 @@ const void* conf_ptr[RULE_TTL+1] =
   &conf.packet_ttl,
   &conf.rssi_min,
   &conf.beacon_period,       
-  &conf.report_period,       
+  &conf.report_period, 
+  &conf.reset_period,      
   &conf.rule_ttl,              
 };
 
@@ -320,10 +322,12 @@ const void* conf_ptr[RULE_TTL+1] =
           // TODO
           case RESET:
           case GET_ALIAS:
-          case GET_RULE:
           case GET_FUNCTION:
           break;
 
+	  case GET_RULE:
+	    p->header.len += get_array_from_entry_id(&p->payload[i+2],p->payload[i+1]);
+          break;
 
           case MY_NET:
           case MY_ADDRESS:
@@ -340,14 +344,14 @@ const void* conf_ptr[RULE_TTL+1] =
             p->payload[i+1] = value >> 8;
             p->payload[i+2] = value & 0xFF; 
           }
+	  p->header.len += conf_size[id];
           break;
 
 
           default:
           break;
         }
-        swap_addresses(&(p->header.src),&(p->header.dst));
-        p->header.len += conf_size[id];
+        swap_addresses(&(p->header.src),&(p->header.dst));      
 #if !SINK
         match_packet(p);
 #else

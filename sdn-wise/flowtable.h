@@ -116,7 +116,6 @@
   void flowtable_init(void);
   void test_flowtable(void);
   entry_t* get_entry_from_array(uint8_t*, uint16_t);
-  uint8_t* get_array_from_entry(entry_t*);
   void print_flowtable(void);
   void print_entry(entry_t*);
   uint8_t action_cmp(action_t*, action_t*);
@@ -124,6 +123,11 @@
   uint8_t entry_cmp(entry_t*, entry_t*);
   void add_entry(entry_t*);
   window_t* get_window_from_array(uint8_t*);
+
+  uint8_t get_array_from_window(uint8_t*, window_t*);
+  uint8_t get_array_from_action(uint8_t*, action_t*);
+  uint8_t get_array_from_entry(uint8_t*, entry_t*);
+  uint8_t get_array_from_entry_id(uint8_t*, int);
 
   entry_t* create_entry(void);
   window_t* create_window(void);

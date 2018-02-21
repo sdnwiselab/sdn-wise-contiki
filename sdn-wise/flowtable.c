@@ -421,9 +421,30 @@
     return w;
   }
 /*----------------------------------------------------------------------------*/
+// TODO
+  uint8_t
+  get_array_from_window(uint8_t* array, window_t* w){
+    array[W_OP_INDEX] = 1;
+    array[W_LEFT_INDEX] = 2;
+    array[W_LEFT_INDEX+1] = 3;
+    array[W_RIGHT_INDEX] = 4;
+    array[W_RIGHT_INDEX+1] = 5;
+    return 5;
+  }
+/*----------------------------------------------------------------------------*/
   action_t*
   get_action_from_array(uint8_t* array, uint8_t action_size){
     return create_action(array[0], &(array[1]), action_size-1);
+  }
+/*----------------------------------------------------------------------------*/
+// TODO
+  uint8_t
+  get_array_from_action(uint8_t* array, action_t* a){
+    array[0]=1;
+    array[1]=2;
+    array[2]=3;
+    array[3]=4;
+    return 4; 
   }
 /*----------------------------------------------------------------------------*/
   entry_t* 
@@ -450,15 +471,43 @@
       entry->stats.ttl = array[i];
       i++;
       entry->stats.count = array[i];
+      i++;
     }
     return entry;
   }
 /*----------------------------------------------------------------------------*/
-  uint8_t* 
-  get_array_from_entry(entry_t* entry)
+  uint8_t 
+  get_array_from_entry(uint8_t* array, entry_t* e)
   {  
-  /* TODO populate */
-    return NULL;
+    uint8_t index = 0;
+    window_t *w;
+    action_t *a;
+    for(w = list_head(e->windows); w != NULL; w = w->next) {
+      index += get_array_from_window(&array[index], w);
+    }
+    for(a = list_head(e->actions); a != NULL; a = a->next) {
+      index += get_array_from_action(&array[index], a);
+    } 
+    array[index] = e->stats.ttl;
+    index++;
+    array[index] = e->stats.count; 
+    return index;
+  }
+/*----------------------------------------------------------------------------*/
+  uint8_t 
+  get_array_from_entry_id(uint8_t* array, int entry_id)
+  {  
+    int i = 0;
+    uint8_t size = 0;
+    entry_t *e;
+    for(e = list_head(flowtable); e != NULL; e = e->next) {
+      if (i == entry_id){
+      	size += get_array_from_entry(array, e);	
+        break;
+      }
+      i++;
+    }
+    return size;
   }
 /*----------------------------------------------------------------------------*/
   uint8_t 
