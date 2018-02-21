@@ -218,7 +218,7 @@ const void* conf_ptr[RULE_TTL+1] =
     uint8_t n_windows = get_payload_at(p,OPEN_PATH_WINDOWS_INDEX);
     uint8_t start = n_windows*WINDOW_SIZE + 1;
     uint8_t path_len = (p->header.len - (start + PLD_INDEX))/ADDRESS_LENGTH;
-    uint8_t my_index = 0;
+    int my_index = -1;
     uint8_t my_position = 0;
     uint8_t end = p->header.len - PLD_INDEX;
     
@@ -233,7 +233,10 @@ const void* conf_ptr[RULE_TTL+1] =
       my_position++;
     }
 
-
+    if (my_index == -1){
+	printf("[PHD]: Nothing to learn, matching...\n");
+	match_packet(p);
+    } else {
     if (my_position > 0)
     { 
       uint8_t prev = my_index - ADDRESS_LENGTH;
@@ -294,6 +297,7 @@ const void* conf_ptr[RULE_TTL+1] =
     if (my_position == path_len-1){
       packet_deallocate(p);
     }
+	}
   }
 /*----------------------------------------------------------------------------*/
   void
@@ -344,7 +348,11 @@ const void* conf_ptr[RULE_TTL+1] =
         }
         swap_addresses(&(p->header.src),&(p->header.dst));
         p->header.len += conf_size[id];
+#if !SINK
         match_packet(p);
+#else
+	print_packet_uart(p);
+#endif
       } else {
         //WRITE
         switch (id)

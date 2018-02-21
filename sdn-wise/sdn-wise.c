@@ -98,8 +98,10 @@
   static uint8_t uart_buffer[UART_BUFFER_SIZE];
   static uint8_t uart_buffer_index = 0;
   static uint8_t uart_buffer_expected = 0;
+#if MOBILE
   static uint8_t count=0;
   static packet_t* p;
+#endif
 /*----------------------------------------------------------------------------*/
   void
   rf_unicast_send(packet_t* p)
