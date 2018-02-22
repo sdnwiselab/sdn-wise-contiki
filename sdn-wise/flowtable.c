@@ -69,9 +69,10 @@
 #define S_RES_INDEX 1 
 
 #define STATS_SIZE  2
-#define STATUS_REGISTER_SIZE  50
+#define STATUS_REGISTER_SIZE  20
 
 #define GET_BITS(b,s,n) (((b) >> (s)) & ((1 << (n)) - 1))
+#define SET_BITS(b,s) ((b) << (s))  
 
 #ifndef SDN_WISE_DEBUG
 #define SDN_WISE_DEBUG 0
@@ -84,10 +85,10 @@
 #endif
 /*----------------------------------------------------------------------------*/
   LIST(flowtable);
-  MEMB(entries_memb, entry_t, 20);
-  MEMB(windows_memb, window_t, 50);
+  MEMB(entries_memb, entry_t, 10);
+  MEMB(windows_memb, window_t, 30);
   MEMB(actions_memb, action_t, 20);
-  MEMB(bytes_memb, byte_t, 100);
+  MEMB(bytes_memb, byte_t, 50);
   uint8_t status_register[STATUS_REGISTER_SIZE];
 /*----------------------------------------------------------------------------*/
   static void print_window(window_t*);
@@ -421,15 +422,17 @@
     return w;
   }
 /*----------------------------------------------------------------------------*/
-// TODO
   uint8_t
   get_array_from_window(uint8_t* array, window_t* w){
-    array[W_OP_INDEX] = 1;
-    array[W_LEFT_INDEX] = 2;
-    array[W_LEFT_INDEX+1] = 3;
-    array[W_RIGHT_INDEX] = 4;
-    array[W_RIGHT_INDEX+1] = 5;
-    return 5;
+    array[W_OP_INDEX] = SET_BITS(w->operation, W_OP_BIT) + 
+			SET_BITS(w->size, W_SIZE_BIT) + 
+			SET_BITS(w->lhs_location, W_LEFT_BIT) + 
+			SET_BITS(w->rhs_location, W_RIGHT_BIT);
+    array[W_LEFT_INDEX+1] = w->lhs & 0xFF;
+    array[W_LEFT_INDEX] = w->lhs >> 8;
+    array[W_RIGHT_INDEX+1] = w->rhs & 0xFF;
+    array[W_RIGHT_INDEX] = w->rhs >> 8;
+    return WINDOW_SIZE;
   }
 /*----------------------------------------------------------------------------*/
   action_t*
@@ -437,14 +440,17 @@
     return create_action(array[0], &(array[1]), action_size-1);
   }
 /*----------------------------------------------------------------------------*/
-// TODO
   uint8_t
   get_array_from_action(uint8_t* array, action_t* a){
-    array[0]=1;
-    array[1]=2;
-    array[2]=3;
-    array[3]=4;
-    return 4; 
+    int i = 2;
+    array[1] = a->type;
+    byte_t *b;
+    for(b = list_head(a->bytes); b != NULL; b = b->next) {
+      array[i] = b->value;
+      i++;
+    }
+    array[0] = i-1;
+    return i; 
   }
 /*----------------------------------------------------------------------------*/
   entry_t* 
@@ -471,7 +477,6 @@
       entry->stats.ttl = array[i];
       i++;
       entry->stats.count = array[i];
-      i++;
     }
     return entry;
   }
@@ -479,11 +484,13 @@
   uint8_t 
   get_array_from_entry(uint8_t* array, entry_t* e)
   {  
-    uint8_t index = 0;
+    uint8_t index = 1;
+    array[0] = 0;
     window_t *w;
     action_t *a;
     for(w = list_head(e->windows); w != NULL; w = w->next) {
       index += get_array_from_window(&array[index], w);
+      array[0] += WINDOW_SIZE;
     }
     for(a = list_head(e->actions); a != NULL; a = a->next) {
       index += get_array_from_action(&array[index], a);
@@ -491,6 +498,7 @@
     array[index] = e->stats.ttl;
     index++;
     array[index] = e->stats.count; 
+    index++;
     return index;
   }
 /*----------------------------------------------------------------------------*/
